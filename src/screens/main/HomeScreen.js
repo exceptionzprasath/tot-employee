@@ -63,7 +63,7 @@ const HomeScreen = ({ navigation }) => {
         try {
             const [ordersRes, statsRes] = await Promise.all([
                 getActiveOrders(),
-                getEmployeeStats(),
+                getEmployeeStats(employee?.empId),
             ]);
 
             if (ordersRes.success) setOrders(ordersRes.data);

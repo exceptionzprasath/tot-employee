@@ -44,6 +44,7 @@ const RegisterScreen = ({ navigation }) => {
         aadharCard: null,
         panCard: null,
         license: null,
+        rc: null,
         insurance: null,
         familyAadhar: null,
     });
@@ -92,7 +93,7 @@ const RegisterScreen = ({ navigation }) => {
             return;
         }
 
-        const requiredFiles = ['profilePhoto', 'aadharCard', 'panCard', 'license', 'insurance', 'familyAadhar'];
+        const requiredFiles = ['profilePhoto', 'aadharCard', 'panCard', 'license', 'rc', 'insurance', 'familyAadhar'];
         const missingFiles = requiredFiles.filter(f => !files[f]);
         if (missingFiles.length > 0) {
             Alert.alert('Error', 'Please upload all required documents');
@@ -253,6 +254,7 @@ const RegisterScreen = ({ navigation }) => {
                             {renderUploadBox('aadharCard', 'Aadhar Card', 'document-text-outline')}
                             {renderUploadBox('panCard', 'PAN Card', 'card-outline')}
                             {renderUploadBox('license', 'License', 'car-outline')}
+                            {renderUploadBox('rc', 'RC Book', 'document-attach-outline')}
                             {renderUploadBox('insurance', 'Insurance', 'shield-checkmark-outline')}
                             {renderUploadBox('familyAadhar', 'Family Aadhar', 'people-circle-outline')}
                         </View>

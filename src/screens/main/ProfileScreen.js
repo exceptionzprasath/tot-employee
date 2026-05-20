@@ -9,17 +9,31 @@ import {
     TouchableOpacity,
     Alert,
     Switch,
+    Modal,
+    Linking,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import { COLORS, SIZES, SHADOWS } from '../../utils/colors';
 import { useAuth } from '../../context/AuthContext';
-import { logoutEmployee } from '../../services/authService';
 
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
 
 const ProfileScreen = ({ navigation }) => {
     const { employee, isOnline, logout, updateStatus, refillDrum } = useAuth();
+    const [isDocsVisible, setIsDocsVisible] = React.useState(false);
+
+    const handleOpenDoc = async (url) => {
+        if (!url) {
+            Alert.alert('Not Found', 'This document was not uploaded during registration.');
+            return;
+        }
+        try {
+            await Linking.openURL(url);
+        } catch (error) {
+            Alert.alert('Error', 'Could not open the document.');
+        }
+    };
 
     const handleRefillRequest = () => {
         Alert.alert(
@@ -47,8 +61,7 @@ const ProfileScreen = ({ navigation }) => {
                 {
                     text: 'End Shift',
                     style: 'destructive',
-                    onPress: async () => {
-                        await logoutEmployee();
+                    onPress: () => {
                         logout();
                     },
                 },
@@ -57,12 +70,6 @@ const ProfileScreen = ({ navigation }) => {
     };
 
     const menuItems = [
-        {
-            id: 'vehicle',
-            icon: 'bicycle-outline',
-            title: 'My Vehicle',
-            subtitle: employee?.vehicleName || 'Thambi Tea Stall',
-        },
         {
             id: 'documents',
             icon: 'document-text-outline',
@@ -214,7 +221,13 @@ const ProfileScreen = ({ navigation }) => {
                             <Animatable.View key={item.id} animation="fadeInUp" delay={index * 50}>
                                 <TouchableOpacity
                                     style={styles.menuItem}
-                                    onPress={() => Alert.alert('Info', `${item.title} coming soon`)}>
+                                    onPress={() => {
+                                        if (item.id === 'documents') {
+                                            setIsDocsVisible(true);
+                                        } else {
+                                            Alert.alert('Info', `${item.title} coming soon`)
+                                        }
+                                    }}>
                                     <View style={styles.menuIconContainer}>
                                         <Icon name={item.icon} size={20} color={COLORS.primary} />
                                     </View>
@@ -237,6 +250,52 @@ const ProfileScreen = ({ navigation }) => {
                     <Text style={styles.versionText}>Version 1.0.0</Text>
                 </View>
             </ScrollView>
+
+            {/* Documents Modal */}
+            <Modal
+                visible={isDocsVisible}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setIsDocsVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>My Documents</Text>
+                            <TouchableOpacity onPress={() => setIsDocsVisible(false)}>
+                                <Icon name="close" size={24} color={COLORS.textPrimary} />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView contentContainerStyle={styles.modalBody}>
+                            {[
+                                { title: 'Selfie / Profile Photo', url: employee?.selfieUrl },
+                                { title: 'Aadhar Card', url: employee?.aadharUrl },
+                                { title: 'PAN Card', url: employee?.panCardUrl },
+                                { title: 'Driving License', url: employee?.licenseUrl },
+                                { title: 'RC Book', url: employee?.rcUrl },
+                                { title: 'Vehicle Insurance', url: employee?.insuranceUrl },
+                                { title: 'Family Aadhar', url: employee?.familyAadharUrl }
+                            ].map((doc, index) => (
+                                <View key={index} style={styles.docItemRow}>
+                                    <View style={styles.docItemLeft}>
+                                        <Icon name="document-text" size={24} color={doc.url ? COLORS.primary : COLORS.mediumGray} />
+                                        <Text style={[styles.docItemTitle, !doc.url && { color: COLORS.mediumGray }]}>{doc.title}</Text>
+                                    </View>
+                                    <TouchableOpacity 
+                                        style={[styles.docViewBtn, !doc.url && styles.docViewBtnDisabled]}
+                                        onPress={() => handleOpenDoc(doc.url)}
+                                        disabled={!doc.url}
+                                    >
+                                        <Text style={[styles.docViewBtnText, !doc.url && { color: COLORS.mediumGray }]}>
+                                            {doc.url ? 'View' : 'Missing'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 };
@@ -509,6 +568,67 @@ const styles = StyleSheet.create({
         fontSize: SIZES.small,
         color: COLORS.mediumGray,
         marginTop: SIZES.paddingL,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: COLORS.white,
+        borderTopLeftRadius: SIZES.radiusXL,
+        borderTopRightRadius: SIZES.radiusXL,
+        maxHeight: '80%',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: SIZES.padding,
+        borderBottomWidth: 1,
+        borderColor: COLORS.lightGray,
+    },
+    modalTitle: {
+        fontSize: SIZES.large,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
+    },
+    modalBody: {
+        padding: SIZES.padding,
+        paddingBottom: 40,
+    },
+    docItemRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderColor: COLORS.lightGray,
+    },
+    docItemLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        flex: 1,
+    },
+    docItemTitle: {
+        fontSize: SIZES.regular,
+        fontWeight: '500',
+        color: COLORS.textPrimary,
+    },
+    docViewBtn: {
+        paddingHorizontal: 16,
+        paddingVertical: 6,
+        backgroundColor: COLORS.primary + '15',
+        borderRadius: 20,
+    },
+    docViewBtnDisabled: {
+        backgroundColor: COLORS.lightGray,
+    },
+    docViewBtnText: {
+        color: COLORS.primary,
+        fontWeight: '600',
+        fontSize: SIZES.small,
     },
 });
 

@@ -20,6 +20,7 @@ export const loginEmployee = async (employeeId, pin) => {
         const response = await api.post('/auth/login', { employeeId, pin });
         if (response.data.success) {
             await AsyncStorage.setItem('employeeToken', response.data.token);
+            await AsyncStorage.setItem('empId', employeeId);
         }
         return response.data;
     } catch (error) {
@@ -28,7 +29,29 @@ export const loginEmployee = async (employeeId, pin) => {
     }
 };
 
+export const getEmployeeStats = async (empId) => {
+    try {
+        const response = await api.get(`/employee/stats/${empId}`);
+        return response.data;
+    } catch (error) {
+        console.error('Get Employee Stats API Error:', error);
+        throw error;
+    }
+};
+
+export const checkSession = async (empId) => {
+    try {
+        const response = await api.get(`/auth/me/${empId}`);
+        return response.data;
+    } catch (error) {
+        console.error('Check Session API Error:', error);
+        throw error;
+    }
+};
+
 export default {
     registerEmployee,
     loginEmployee,
+    getEmployeeStats,
+    checkSession
 };

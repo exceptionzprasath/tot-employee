@@ -1,5 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { checkSession } from '../services/authService';
 
 const AuthContext = createContext();
 
@@ -22,12 +24,34 @@ export const AuthProvider = ({ children }) => {
         setSnacksCount(0);
     };
 
-    const logout = () => {
+    const logout = async () => {
         setIsAuthenticated(false);
         setEmployee(null);
         setIsOnline(false);
         setShiftStartTime(null);
+        await AsyncStorage.removeItem('employeeToken');
+        await AsyncStorage.removeItem('empId');
     };
+
+    useEffect(() => {
+        const loadSession = async () => {
+            try {
+                const empId = await AsyncStorage.getItem('empId');
+                if (empId) {
+                    const response = await checkSession(empId);
+                    if (response.success && response.employee) {
+                        setIsAuthenticated(true);
+                        setEmployee(response.employee);
+                    } else {
+                        logout();
+                    }
+                }
+            } catch (error) {
+                console.error('Session load error:', error);
+            }
+        };
+        loadSession();
+    }, []);
 
     const updateStatus = (status) => {
         const online = status === 'online';
