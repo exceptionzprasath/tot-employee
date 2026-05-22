@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "285107890406",
+    "project_id": "foodman-1f911",
+    "storage_bucket": "foodman-1f911.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:285107890406:android:3687b20b68891057d8b327",
+        "android_client_info": {
+          "package_name": "com.thambiorutea2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnvMUPgRh2S2iewhxaXhB7RsIHKNkn8NM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:285107890406:android:2601421811a882d5d8b327",
+        "android_client_info": {
+          "package_name": "com.totemployee"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnvMUPgRh2S2iewhxaXhB7RsIHKNkn8NM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

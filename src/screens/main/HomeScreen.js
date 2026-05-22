@@ -15,8 +15,10 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import { COLORS, SIZES, SHADOWS } from '../../utils/colors';
 import { useAuth } from '../../context/AuthContext';
-import { getActiveOrders, acceptOrder, updateOrderStatus } from '../../services/orderService';
+import { acceptOrder, updateOrderStatus } from '../../services/orderService';
 import { getEmployeeStats } from '../../services/authService';
+import { listenToPlacedOrders } from '../../config/firestore';
+import { getSocket, initSocket } from '../../config/socket';
 
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
 
@@ -37,8 +39,8 @@ const HomeScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        loadData();
-    }, []);
+        loadStats();
+    }, [isOnline]);
 
     useEffect(() => {
         let timer;
@@ -59,19 +61,58 @@ const HomeScreen = ({ navigation }) => {
         return () => clearInterval(timer);
     }, [isOnline, shiftStartTime]);
 
-    const loadData = async () => {
-        try {
-            const [ordersRes, statsRes] = await Promise.all([
-                getActiveOrders(),
-                getEmployeeStats(employee?.empId),
-            ]);
+    useEffect(() => {
+        loadStats();
 
-            if (ordersRes.success) setOrders(ordersRes.data);
+        // Firestore real-time listener for placed orders (fallback)
+        const unsubscribe = listenToPlacedOrders(
+            (placedOrders) => {
+                console.log('Firestore: placed orders updated, count:', placedOrders.length);
+                setOrders(placedOrders);
+                setLoading(false);
+            },
+            (error) => {
+                console.error('Firestore listener error:', error);
+                setLoading(false);
+            }
+        );
+
+        // Socket.io real-time listeners for dispatch
+        const socket = getSocket() || initSocket();
+        if (socket) {
+            // New order dispatched to this rider (within 3km)
+            socket.on('new_order', (data) => {
+                console.log('[Socket] New order received:', data.order?.id, 'distance:', data.distance, 'km');
+                setOrders(prev => {
+                    // Avoid duplicates
+                    const exists = prev.find(o => o.id === data.order.id);
+                    if (exists) return prev;
+                    return [data.order, ...prev];
+                });
+            });
+
+            // Order accepted by another rider - remove from list
+            socket.on('order_accepted', (data) => {
+                console.log('[Socket] Order accepted by another rider:', data.orderId);
+                setOrders(prev => prev.filter(o => o.id !== data.orderId));
+            });
+        }
+
+        return () => {
+            unsubscribe();
+            if (socket) {
+                socket.off('new_order');
+                socket.off('order_accepted');
+            }
+        };
+    }, []);
+
+    const loadStats = async () => {
+        try {
+            const statsRes = await getEmployeeStats(employee?.empId);
             if (statsRes.success) setStats(statsRes.stats);
         } catch (error) {
-            console.error('Error loading data:', error);
-        } finally {
-            setLoading(false);
+            console.error('Error loading stats:', error);
         }
     };
 
@@ -83,10 +124,20 @@ const HomeScreen = ({ navigation }) => {
     };
 
     const handleAcceptOrder = async (orderId) => {
-        const response = await acceptOrder(orderId);
+        const response = await acceptOrder(orderId, {
+            employeeId: employee?.empId,
+            employeeName: employee?.name,
+            employeePhone: employee?.phone || employee?.mobile,
+            employeeAvatar: employee?.selfieUrl || null,
+        });
         if (response.success) {
             Alert.alert('Order Accepted', 'Order has been assigned to you!');
-            loadData();
+            // Remove from local list immediately
+            setOrders(prev => prev.filter(o => o.id !== orderId));
+            loadStats();
+        } else if (response.message?.includes('already')) {
+            Alert.alert('Too Late!', 'This order was already accepted by another rider.');
+            setOrders(prev => prev.filter(o => o.id !== orderId));
         }
     };
 
@@ -146,7 +197,7 @@ const HomeScreen = ({ navigation }) => {
                         <Text style={styles.timeText}>~{item.estimatedTime} min</Text>
                     </View>
 
-                    {item.status === 'pending' && (
+                    {(item.status === 'placed' || item.status === 'pending') && (
                         <TouchableOpacity
                             style={styles.acceptButton}
                             onPress={() => handleAcceptOrder(item.id)}>
@@ -272,7 +323,7 @@ const HomeScreen = ({ navigation }) => {
 
                 <View style={styles.sectionHeader}>
                     <Text style={styles.sectionTitle}>Active Orders</Text>
-                    <TouchableOpacity onPress={loadData}>
+                    <TouchableOpacity onPress={loadStats}>
                         <Icon name="refresh" size={20} color={COLORS.primary} />
                     </TouchableOpacity>
                 </View>

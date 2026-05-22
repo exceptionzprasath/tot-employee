@@ -1,5 +1,5 @@
 // API Configuration for Thambioru Tea Employee App
-export const API_BASE_URL = 'https://10baf0c16a39.ngrok-free.app';
+export const API_BASE_URL = 'https://e5d9-2401-4900-ca83-9396-dda8-d19-849f-372e.ngrok-free.app';
 
 export const API_ENDPOINTS = {
     // Auth
@@ -30,7 +30,7 @@ export const PAYMENT_CONFIG = {
     MERCHANT_NAME: 'Thambioru Tea',
 };
 
-export const GOOGLE_MAPS_API_KEY = 'AIzaSyAs3nkKoCsndZiXeV6oh0PvRLL7FpMiZ4k';
+export const GOOGLE_MAPS_API_KEY = 'AIzaSyBO86Y_HqbJDWjCfBljLC72qiazTSk4i1o';
 
 export default {
     API_BASE_URL,

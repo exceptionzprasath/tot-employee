@@ -13,6 +13,7 @@ import * as Animatable from 'react-native-animatable';
 import Geolocation from 'react-native-geolocation-service';
 import { PermissionsAndroid } from 'react-native';
 import { getNearbyOrders, getOrderHistory, getActiveOrders } from '../../services/orderService';
+import { listenToPlacedOrders } from '../../config/firestore';
 import { COLORS, SIZES, SHADOWS } from '../../utils/colors';
 
 
@@ -37,8 +38,34 @@ const OrdersScreen = ({ navigation }) => {
     };
 
     useEffect(() => {
-        loadOrders();
+        // Firestore real-time listener for placed orders (active tab)
+        let unsubscribe;
+        if (activeTab === 'active') {
+            setLoading(true);
+            unsubscribe = listenToPlacedOrders(
+                (orders) => {
+                    setActiveOrders(orders);
+                    setLoading(false);
+                },
+                () => setLoading(false)
+            );
+        } else {
+            loadHistory();
+        }
+        return () => { if (unsubscribe) unsubscribe(); };
     }, [activeTab]);
+
+    const loadHistory = async () => {
+        setLoading(true);
+        try {
+            const res = await getOrderHistory();
+            if (res.success) setHistoryOrders(res.data);
+        } catch (error) {
+            console.error('Error loading history:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const loadOrders = async () => {
         setLoading(true);

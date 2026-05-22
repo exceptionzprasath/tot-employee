@@ -11,12 +11,11 @@ export const getNearbyOrders = async (lat, lng) => {
 };
 
 export const getActiveOrders = async () => {
-    // In a real app, you'd fetch orders assigned to this employee
-    // For now, let's just return a placeholder or fetch nearby
     try {
-        // This is a simplified version; employees would usually have a dedicated "My Orders" endpoint
-        // For this task, we focus on fetching nearby unaccepted orders
-        return { success: true, data: [] };
+        // Fetch nearby orders (we use a default location since the backend radius is huge for testing)
+        // In production, HomeScreen should pass the actual location here.
+        const response = await api.get(`/orders/nearby?lat=11.45&lng=77.37`);
+        return response.data;
     } catch (error) {
         return { success: false, data: [] };
     }
