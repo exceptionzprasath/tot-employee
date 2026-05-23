@@ -1,5 +1,5 @@
 // API Configuration for Thambioru Tea Employee App
-export const API_BASE_URL = 'https://e5d9-2401-4900-ca83-9396-dda8-d19-849f-372e.ngrok-free.app';
+export const API_BASE_URL = 'https://settlo-tot-backend.vercel.app';
 
 export const API_ENDPOINTS = {
     // Auth

@@ -101,9 +101,12 @@ const getFcmToken = async () => {
     try {
         const token = await messaging().getToken();
         console.log('[FCM] Token retrieved successfully:', token);
+        // Subscribe to all_users topic for unified broadcast notifications
+        await messaging().subscribeToTopic('all_users');
+        console.log('[FCM] Subscribed to topic: all_users');
         return token;
     } catch (err) {
-        console.error('[FCM] Error getting token:', err);
+        console.error('[FCM] Error getting token or subscribing to topic:', err);
         return null;
     }
 };
