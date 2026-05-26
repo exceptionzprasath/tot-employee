@@ -197,6 +197,51 @@ const ProfileScreen = ({ navigation }) => {
                         </View>
                     </View>
 
+                    {/* Detailed Profile Card */}
+                    <Animatable.View animation="fadeInUp" delay={50} style={styles.detailsCard}>
+                        <Text style={styles.detailsHeader}>Personal & Vehicle Details</Text>
+                        
+                        <View style={styles.detailRow}>
+                            <View style={styles.detailBlock}>
+                                <Text style={styles.detailLabel}>Mobile Number</Text>
+                                <Text style={styles.detailValue}>{employee?.phone || employee?.mobile || '—'}</Text>
+                            </View>
+                            <View style={styles.detailBlock}>
+                                <Text style={styles.detailLabel}>Alternate Mobile</Text>
+                                <Text style={styles.detailValue}>{employee?.alternateNumber || '—'}</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.detailRow}>
+                            <View style={styles.detailBlock}>
+                                <Text style={styles.detailLabel}>Gender</Text>
+                                <Text style={styles.detailValue}>{employee?.gender || '—'}</Text>
+                            </View>
+                            <View style={styles.detailBlock}>
+                                <Text style={styles.detailLabel}>Date of Joining</Text>
+                                <Text style={styles.detailValue}>{employee?.dateOfJoining || '—'}</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.detailRow}>
+                            <View style={styles.detailBlock}>
+                                <Text style={styles.detailLabel}>Vehicle Type</Text>
+                                <Text style={styles.detailValue}>{employee?.vehicleType || '—'}</Text>
+                            </View>
+                            <View style={styles.detailBlock}>
+                                <Text style={styles.detailLabel}>Vehicle Number</Text>
+                                <Text style={styles.detailValue}>{employee?.vehicleNumber || '—'}</Text>
+                            </View>
+                        </View>
+
+                        {employee?.address && (
+                            <View style={[styles.detailBlock, { borderTopWidth: 1, borderColor: COLORS.lightGray, paddingTop: 10, marginTop: 5 }]}>
+                                <Text style={styles.detailLabel}>Address</Text>
+                                <Text style={[styles.detailValue, { fontSize: 13, lineHeight: 18, fontWeight: '400' }]}>{employee?.address}</Text>
+                            </View>
+                        )}
+                    </Animatable.View>
+
                     {/* Refill Request Section */}
                     <Animatable.View animation="fadeInUp" delay={100} style={styles.refillCard}>
                         <View style={styles.refillInfo}>
@@ -468,6 +513,42 @@ const styles = StyleSheet.create({
         width: 1,
         height: '100%',
         backgroundColor: COLORS.lightGray,
+    },
+    detailsCard: {
+        backgroundColor: COLORS.white,
+        borderRadius: SIZES.radius,
+        padding: SIZES.paddingL,
+        marginBottom: SIZES.padding,
+        ...SHADOWS.small,
+    },
+    detailsHeader: {
+        fontSize: SIZES.regular + 1,
+        fontWeight: '700',
+        color: COLORS.primary,
+        marginBottom: 12,
+        borderBottomWidth: 1,
+        borderColor: COLORS.lightGray,
+        paddingBottom: 6,
+    },
+    detailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+    },
+    detailBlock: {
+        flex: 1,
+    },
+    detailLabel: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: COLORS.textSecondary,
+        textTransform: 'uppercase',
+        marginBottom: 2,
+    },
+    detailValue: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: COLORS.textPrimary,
     },
     refillCard: {
         flexDirection: 'row',

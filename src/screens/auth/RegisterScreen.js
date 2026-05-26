@@ -24,6 +24,18 @@ import { registerEmployee } from '../../services/authService';
 const { width } = Dimensions.get('window');
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
 
+const getTodayDateString = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    let mm = today.getMonth() + 1;
+    let dd = today.getDate();
+
+    if (dd < 10) dd = '0' + dd;
+    if (mm < 10) mm = '0' + mm;
+
+    return `${yyyy}-${mm}-${dd}`;
+};
+
 const RegisterScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
@@ -36,7 +48,12 @@ const RegisterScreen = ({ navigation }) => {
         facebook: '',
         familyRelation: '',
         pin: '',
-        role: 'employee'
+        role: 'employee',
+        alternateNumber: '',
+        gender: 'Male',
+        vehicleType: 'Bike',
+        vehicleNumber: '',
+        dateOfJoining: getTodayDateString()
     });
 
     const [files, setFiles] = useState({
@@ -247,7 +264,93 @@ const RegisterScreen = ({ navigation }) => {
                             </View>
                         </View>
 
-                        <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Documents & Vertification</Text>
+                        <Text style={[styles.sectionTitle, { marginTop: 15 }]}>Vehicle & Work Information</Text>
+
+                        <View style={styles.row}>
+                            <View style={{ flex: 1.2, marginRight: 10 }}>
+                                <Text style={styles.inputLabel}>Alternate Mobile</Text>
+                                <View style={styles.inputWrapper}>
+                                    <Icon name="call-outline" size={18} color={COLORS.mediumGray} />
+                                    <TextInput
+                                        style={styles.textInput}
+                                        placeholder="Alternate Number"
+                                        keyboardType="phone-pad"
+                                        value={formData.alternateNumber}
+                                        onChangeText={(val) => handleInputChange('alternateNumber', val)}
+                                    />
+                                </View>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.inputLabel}>Date of Joining</Text>
+                                <View style={styles.inputWrapper}>
+                                    <Icon name="calendar-outline" size={18} color={COLORS.mediumGray} />
+                                    <TextInput
+                                        style={styles.textInput}
+                                        placeholder="YYYY-MM-DD"
+                                        value={formData.dateOfJoining}
+                                        onChangeText={(val) => handleInputChange('dateOfJoining', val)}
+                                    />
+                                </View>
+                            </View>
+                        </View>
+
+                        <View style={styles.inputItem}>
+                            <Text style={styles.inputLabel}>Gender</Text>
+                            <View style={styles.chipRow}>
+                                {['Male', 'Female', 'Others'].map(g => (
+                                    <TouchableOpacity
+                                        key={g}
+                                        style={[
+                                            styles.chip,
+                                            formData.gender === g && styles.chipActive
+                                        ]}
+                                        onPress={() => handleInputChange('gender', g)}
+                                    >
+                                        <Text style={[
+                                            styles.chipText,
+                                            formData.gender === g && styles.chipTextActive
+                                        ]}>{g}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+
+                        <View style={styles.inputItem}>
+                            <Text style={styles.inputLabel}>Vehicle Type</Text>
+                            <View style={styles.chipRow}>
+                                {['Bike', 'Scooter', 'Cycle', 'Others'].map(v => (
+                                    <TouchableOpacity
+                                        key={v}
+                                        style={[
+                                            styles.chip,
+                                            formData.vehicleType === v && styles.chipActive
+                                        ]}
+                                        onPress={() => handleInputChange('vehicleType', v)}
+                                    >
+                                        <Text style={[
+                                            styles.chipText,
+                                            formData.vehicleType === v && styles.chipTextActive
+                                        ]}>{v}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+
+                        <View style={styles.inputItem}>
+                            <Text style={styles.inputLabel}>Vehicle Number</Text>
+                            <View style={styles.inputWrapper}>
+                                <Icon name="barcode-outline" size={18} color={COLORS.mediumGray} />
+                                <TextInput
+                                    style={styles.textInput}
+                                    placeholder="e.g. KA-01-XX-XXXX"
+                                    autoCapitalize="characters"
+                                    value={formData.vehicleNumber}
+                                    onChangeText={(val) => handleInputChange('vehicleNumber', val)}
+                                />
+                            </View>
+                        </View>
+
+                        <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Documents & Verification</Text>
                         
                         <View style={styles.uploadGrid}>
                             {renderUploadBox('profilePhoto', 'Profile Photo', 'camera-outline')}
@@ -471,7 +574,33 @@ const styles = StyleSheet.create({
         marginTop: 20,
         height: 55,
         borderRadius: SIZES.radius,
-    }
+    },
+    chipRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginTop: 4,
+        marginBottom: 10,
+    },
+    chip: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 20,
+        backgroundColor: COLORS.lightGray,
+        borderWidth: 1,
+        borderColor: '#EEE',
+    },
+    chipActive: {
+        backgroundColor: COLORS.primary,
+        borderColor: COLORS.primary,
+    },
+    chipText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: COLORS.textSecondary,
+    },
+    chipTextActive: {
+        color: COLORS.white,
+    },
 });
 
 export default RegisterScreen;
