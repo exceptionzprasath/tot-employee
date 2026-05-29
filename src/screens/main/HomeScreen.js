@@ -728,7 +728,7 @@ const HomeScreen = ({ navigation }) => {
                             </View>
                         </View>
 
-                        <Text style={styles.upiIdText}>{PAYMENT_CONFIG.UPI_ID}</Text>
+                        <Text style={styles.upiIdText}>Dynamic Spot QR Code</Text>
                         <Text style={styles.amountText}>Amount: ₹{cupsToSell * 15}</Text>
 
                         <View style={{ width: '100%', marginTop: 12 }}>

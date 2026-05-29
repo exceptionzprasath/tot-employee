@@ -136,8 +136,16 @@ const OrderDetailScreen = ({ route, navigation }) => {
                     });
                     updateInventory(teaCount, snackCount);
 
-                    // Show payment modal
-                    setTimeout(() => setShowPaymentModal(true), 800);
+                    // Show payment modal or finish immediately if pre-paid online
+                    if (order.paymentMode === 'online') {
+                        setTimeout(() => {
+                            Alert.alert('Delivery Successful', 'Order marked as delivered successfully. Payment was pre-paid online.', [
+                                { text: 'OK', onPress: () => navigation.goBack() }
+                            ]);
+                        }, 800);
+                    } else {
+                        setTimeout(() => setShowPaymentModal(true), 800);
+                    }
                 }
             }
         } catch (error) {
@@ -272,7 +280,20 @@ const OrderDetailScreen = ({ route, navigation }) => {
 
                 {/* Order Info */}
                 <Animatable.View animation="fadeInUp" delay={100} style={styles.card}>
-                    <Text style={styles.cardTitle}>Order Info</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <Text style={styles.cardTitle}>Order Info</Text>
+                        {order.paymentMode === 'online' ? (
+                            <View style={{ backgroundColor: '#4CAF5020', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <Icon name="checkmark-circle" size={14} color="#4CAF50" />
+                                <Text style={{ color: '#4CAF50', fontSize: 11, fontWeight: '700' }}>Received from App</Text>
+                            </View>
+                        ) : (
+                            <View style={{ backgroundColor: '#FF980020', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <Icon name="wallet" size={14} color="#FF9800" />
+                                <Text style={{ color: '#FF9800', fontSize: 11, fontWeight: '700' }}>Collect COD (Cash/QR)</Text>
+                            </View>
+                        )}
+                    </View>
                     <View style={styles.infoGrid}>
                         <View style={styles.infoItem}>
                             <Icon name="navigate-outline" size={20} color={COLORS.mediumGray} />
@@ -358,7 +379,14 @@ const OrderDetailScreen = ({ route, navigation }) => {
                     ))}
                     <View style={styles.totalRow}>
                         <Text style={styles.totalLabel}>Total</Text>
-                        <Text style={styles.totalAmount}>₹{order.totalAmount}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            {order.paymentMode === 'online' && (
+                                <View style={{ backgroundColor: '#4CAF5020', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
+                                    <Text style={{ color: '#4CAF50', fontSize: 12, fontWeight: '700' }}>Received from App</Text>
+                                </View>
+                            )}
+                            <Text style={styles.totalAmount}>₹{order.totalAmount}</Text>
+                        </View>
                     </View>
                 </Animatable.View>
 
@@ -442,7 +470,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
                             </View>
                         </View>
 
-                        <Text style={styles.upiIdText}>{PAYMENT_CONFIG.UPI_ID}</Text>
+                        <Text style={styles.upiIdText}>Dynamic Spot QR Code</Text>
                         <Text style={styles.amountText}>Amount: ₹{order.totalAmount}</Text>
 
                         <View style={styles.qrFooter}>

@@ -136,6 +136,11 @@ const OrdersScreen = ({ navigation }) => {
                     <View style={styles.infoRow}>
                         <Icon name="cart-outline" size={14} color={COLORS.mediumGray} />
                         <Text style={styles.infoText}>{item.items?.length} items</Text>
+                        {item.paymentMode === 'online' && (
+                            <View style={{ backgroundColor: '#4CAF5020', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 }}>
+                                <Text style={{ color: '#4CAF50', fontSize: 10, fontWeight: '700' }}>Received from App</Text>
+                            </View>
+                        )}
                         <Text style={styles.amountText}>₹{item.totalAmount}</Text>
                     </View>
                 </View>
@@ -168,6 +173,11 @@ const OrdersScreen = ({ navigation }) => {
                     <View>
                         <Text style={styles.historyId}>#{item.id}</Text>
                         <Text style={styles.historyCustomer}>{item.customerName}</Text>
+                        {item.paymentMode === 'online' && (
+                            <View style={{ backgroundColor: '#4CAF5020', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4, marginBottom: 4, alignSelf: 'flex-start' }}>
+                                <Text style={{ color: '#4CAF50', fontSize: 10, fontWeight: '700' }}>Received from App</Text>
+                            </View>
+                        )}
                         <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
                     </View>
                 </View>
@@ -177,6 +187,7 @@ const OrdersScreen = ({ navigation }) => {
                 </View>
             </View>
         </Animatable.View>
+
     );
 
     const orders = activeTab === 'active' 
