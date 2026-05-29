@@ -57,3 +57,13 @@ export const acceptOrder = async (orderId, employeeData) => {
         return { success: false, message: 'Failed to accept order' };
     }
 };
+
+export const recordOfflineSale = async (employeeId, cupsSold, paymentMode) => {
+    try {
+        const response = await api.post(`/employees/${employeeId}/offline-sale`, { cupsSold, paymentMode });
+        return response.data;
+    } catch (error) {
+        console.error('Record Offline Sale Error:', error);
+        return { success: false, message: 'Failed to record offline sale' };
+    }
+};

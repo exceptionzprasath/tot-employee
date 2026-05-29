@@ -236,6 +236,32 @@ export const AuthProvider = ({ children }) => {
                                     idx
                                 );
                             }
+
+                            // Re-connect to live socket and start location tracking
+                            const hasLocPerm = await requestLocationPermission();
+                            if (hasLocPerm) {
+                                try {
+                                    const location = await getCurrentPosition();
+                                    setCurrentLocation(location);
+                                    const fcmToken = await getFcmToken();
+
+                                    emitGoOnline(response.employee, location, fcmToken, {
+                                        boxNumber: savedBox || '',
+                                        currentCan: activeCan,
+                                        teaCups: cups,
+                                        teasSold: sold,
+                                        totalTeasSold: totalSold,
+                                        canIndex: idx,
+                                        canRequestStatus: reqStatus,
+                                        canHistory: JSON.parse(histStr)
+                                    });
+                                } catch (locErr) {
+                                    console.log('[AuthContext] Session restore geolocation/socket failed:', locErr.message);
+                                }
+                                startLocationUpdates();
+                            } else {
+                                console.log('[AuthContext] Location permission not granted on restore, skipping tracking');
+                            }
                         }
                     } else {
                         logout();
@@ -353,7 +379,7 @@ export const AuthProvider = ({ children }) => {
                     0,
                     1
                 );
-                startLocationUpdates(getCurrentPosition);
+                startLocationUpdates();
                 setIsOnline(true);
                 return true;
             } catch (error) {

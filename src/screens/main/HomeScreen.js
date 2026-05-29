@@ -12,15 +12,17 @@ import {
     Alert,
     Modal,
     TextInput,
-    Dimensions
+    Dimensions,
+    Image
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import { COLORS, SIZES, SHADOWS } from '../../utils/colors';
 import { useAuth } from '../../context/AuthContext';
-import { acceptOrder } from '../../services/orderService';
+import { acceptOrder, recordOfflineSale } from '../../services/orderService';
 import { listenToPlacedOrders } from '../../config/firestore';
 import { getSocket, initSocket } from '../../config/socket';
+import { PAYMENT_CONFIG } from '../../config/api';
 
 const { width } = Dimensions.get('window');
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
@@ -42,6 +44,7 @@ const HomeScreen = ({ navigation }) => {
         canHistory,
         requestNextCanFromOffice,
         swapCanAtOffice,
+        updateInventory,
         shiftStartTime,
         SHIFT_DURATION
     } = useAuth();
@@ -62,6 +65,13 @@ const HomeScreen = ({ navigation }) => {
     const [selectedEta, setSelectedEta] = useState('10 mins');
     const [showSwapModal, setShowSwapModal] = useState(false);
     const [scannedCanCode, setScannedCanCode] = useState('');
+
+    // Offline Sale Flow states
+    const [showOfflineSaleModal, setShowOfflineSaleModal] = useState(false);
+    const [cupsToSell, setCupsToSell] = useState(1);
+    const [offlinePaymentMode, setOfflinePaymentMode] = useState('cash'); // 'cash' / 'upi'
+    const [showOfflineQRModal, setShowOfflineQRModal] = useState(false);
+    const [isSubmittingSale, setIsSubmittingSale] = useState(false);
 
     useEffect(() => {
         // Firestore real-time listener for placed orders
@@ -237,6 +247,53 @@ const HomeScreen = ({ navigation }) => {
         }
     };
 
+    const handleConfirmOfflineSale = async () => {
+        if (cupsToSell <= 0 || cupsToSell > teaCups) {
+            Alert.alert('Invalid Count', `You can only sell between 1 and ${teaCups} cups.`);
+            return;
+        }
+
+        setIsSubmittingSale(true);
+        try {
+            const empId = employee?.empId || 'EMP001';
+            const response = await recordOfflineSale(empId, cupsToSell, offlinePaymentMode);
+
+            if (response.success) {
+                // Decrement inventory locally
+                await updateInventory(cupsToSell, 0);
+                
+                setShowOfflineSaleModal(false);
+                setShowOfflineQRModal(false);
+                Alert.alert('Success', `Offline sale of ${cupsToSell} cups recorded successfully!`);
+                setCupsToSell(1);
+            } else {
+                Alert.alert('Error', response.message || 'Failed to record offline sale. Please try again.');
+            }
+        } catch (error) {
+            console.error('Offline sale error:', error);
+            Alert.alert('Error', 'Could not sync sale with server.');
+        } finally {
+            setIsSubmittingSale(false);
+        }
+    };
+
+    const handleSelectOfflinePayment = (mode) => {
+        setOfflinePaymentMode(mode);
+        if (mode === 'upi') {
+            setShowOfflineQRModal(true);
+        } else {
+            // Cash payment
+            Alert.alert(
+                'Collect Cash',
+                `Please collect ₹${cupsToSell * 15} cash from customer. Click confirm once collected.`,
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Confirm Sale', onPress: () => handleConfirmOfflineSale() }
+                ]
+            );
+        }
+    };
+
     const renderOrderCard = ({ item }) => {
         const remainingTime = Math.max(0, 30 - Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 1000));
 
@@ -296,8 +353,8 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor={COLORS.darkBg} translucent />
 
-            {/* Shift Dashboard Header */}
-            <View style={[styles.header, { paddingTop: Platform.OS === 'ios' ? 44 : STATUSBAR_HEIGHT + 10 }]}>
+            {/* Sticky Header Top */}
+            <View style={[styles.headerTopBar, { paddingTop: Platform.OS === 'ios' ? 44 : STATUSBAR_HEIGHT + 10 }]}>
                 <View style={styles.headerTop}>
                     <View>
                         <Text style={styles.shiftBadge}>FULL TIME SHIFT</Text>
@@ -318,9 +375,16 @@ const HomeScreen = ({ navigation }) => {
                         </View>
                     </View>
                 </View>
+            </View>
 
+            {/* Main Scrollable Content under Sticky Header Top */}
+            <ScrollView 
+                style={styles.scrollContainer} 
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+            >
                 {isOnline && (
-                    <Animatable.View animation="fadeInUp" duration={500} style={styles.dashboardContainer}>
+                    <Animatable.View animation="fadeInUp" duration={500} style={styles.scrollableHeader}>
                         {/* Progress Dial Widget */}
                         <View style={styles.progressSection}>
                             <View style={styles.progressCircle}>
@@ -397,63 +461,66 @@ const HomeScreen = ({ navigation }) => {
                                     }
                                 ]} />
                             </View>
+
+                            {/* Record Offline Sale Button */}
+                            <TouchableOpacity 
+                                style={[styles.recordSaleBtn, teaCups <= 0 && { opacity: 0.6 }]}
+                                onPress={() => teaCups > 0 ? setShowOfflineSaleModal(true) : Alert.alert('Can Empty', 'No tea remaining in can. Swap can at office first.')}
+                                disabled={teaCups <= 0}
+                            >
+                                <Icon name="cart" size={16} color={COLORS.textPrimary} />
+                                <Text style={styles.recordSaleText}>Record Offline Sale</Text>
+                            </TouchableOpacity>
                         </View>
                     </Animatable.View>
                 )}
-            </View>
 
-            {/* Active Orders List or Flow Overlays */}
-            <View style={styles.content}>
-                {isOnline && canRequestStatus !== 'none' ? (
-                    /* Swap Can Flow Overlay Banners */
-                    <Animatable.View animation="fadeIn" style={styles.flowCard}>
-                        {canRequestStatus === 'requested' ? (
-                            <View style={styles.flowCardInner}>
-                                <Animatable.Image
-                                    animation="pulse"
-                                    iterationCount="infinite"
-                                    source={require('../../assets/logo.png')} // fallback or generic icon
-                                    style={styles.flowImage}
-                                    defaultSource={require('../../assets/logo.png')}
-                                />
-                                <Icon name="navigate-circle-outline" size={48} color={COLORS.accent} />
-                                <Text style={styles.flowTitle}>Request Sent to Office</Text>
-                                <Text style={styles.flowSub}>Next can is being prepared. You can head towards the office now.</Text>
-                                <View style={styles.flowInfoBox}>
-                                    <Text style={styles.flowInfoText}>ETA to Office: 12 mins</Text>
+                {/* Active Orders List or Flow Overlays */}
+                <View style={styles.content}>
+                    {isOnline && canRequestStatus !== 'none' ? (
+                        /* Swap Can Flow Overlay Banners */
+                        <Animatable.View animation="fadeIn" style={styles.flowCard}>
+                            {canRequestStatus === 'requested' ? (
+                                <View style={styles.flowCardInner}>
+                                    <Animatable.Image
+                                        animation="pulse"
+                                        iterationCount="infinite"
+                                        source={require('../../assets/logo.png')} // fallback or generic icon
+                                        style={styles.flowImage}
+                                        defaultSource={require('../../assets/logo.png')}
+                                    />
+                                    <Icon name="navigate-circle-outline" size={48} color={COLORS.accent} />
+                                    <Text style={styles.flowTitle}>Request Sent to Office</Text>
+                                    <Text style={styles.flowSub}>Next can is being prepared. You can head towards the office now.</Text>
+                                    <View style={styles.flowInfoBox}>
+                                        <Text style={styles.flowInfoText}>ETA to Office: 12 mins</Text>
+                                    </View>
+                                    <TouchableOpacity style={styles.flowBtn} onPress={handleReachedOffice}>
+                                        <Text style={styles.flowBtnText}>Reached Office</Text>
+                                    </TouchableOpacity>
                                 </View>
-                                <TouchableOpacity style={styles.flowBtn} onPress={handleReachedOffice}>
-                                    <Text style={styles.flowBtnText}>Reached Office</Text>
+                            ) : (
+                                <View style={styles.flowCardInner}>
+                                    <Icon name="business-outline" size={48} color={COLORS.online} />
+                                    <Text style={styles.flowTitle}>Reached Office</Text>
+                                    <Text style={styles.flowSub}>Prepared Can is ready for swap: {preparedCanId}</Text>
+                                    <TouchableOpacity style={[styles.flowBtn, { backgroundColor: COLORS.online }]} onPress={handleReachedOffice}>
+                                        <Text style={styles.flowBtnText}>Swap New Can</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </Animatable.View>
+                    ) : (
+                        /* Default: Show active order cards */
+                        <View style={{ flex: 1 }}>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionTitle}>Active Orders ({filteredOrders.length})</Text>
+                                <TouchableOpacity onPress={() => {}}>
+                                    <Icon name="refresh" size={20} color={COLORS.primary} />
                                 </TouchableOpacity>
                             </View>
-                        ) : (
-                            <View style={styles.flowCardInner}>
-                                <Icon name="business-outline" size={48} color={COLORS.online} />
-                                <Text style={styles.flowTitle}>Reached Office</Text>
-                                <Text style={styles.flowSub}>Prepared Can is ready for swap: {preparedCanId}</Text>
-                                <TouchableOpacity style={[styles.flowBtn, { backgroundColor: COLORS.online }]} onPress={handleReachedOffice}>
-                                    <Text style={styles.flowBtnText}>Swap New Can</Text>
-                                </TouchableOpacity>
-                            </View>
-                        )}
-                    </Animatable.View>
-                ) : (
-                    /* Default: Show active order cards */
-                    <View style={{ flex: 1 }}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>Active Orders ({filteredOrders.length})</Text>
-                            <TouchableOpacity onPress={() => {}}>
-                                <Icon name="refresh" size={20} color={COLORS.primary} />
-                            </TouchableOpacity>
-                        </View>
 
-                        <FlatList
-                            data={filteredOrders}
-                            keyExtractor={(item) => item.id}
-                            renderItem={renderOrderCard}
-                            showsVerticalScrollIndicator={false}
-                            contentContainerStyle={styles.orderList}
-                            ListEmptyComponent={
+                            {filteredOrders.length === 0 ? (
                                 <View style={styles.emptyState}>
                                     <Icon name="cafe-outline" size={60} color={COLORS.mediumGray} />
                                     <Text style={styles.emptyTitle}>No Orders Available</Text>
@@ -468,11 +535,17 @@ const HomeScreen = ({ navigation }) => {
                                         </TouchableOpacity>
                                     )}
                                 </View>
-                            }
-                        />
-                    </View>
-                )}
-            </View>
+                            ) : (
+                                filteredOrders.map((item) => (
+                                    <View key={item.id}>
+                                        {renderOrderCard({ item })}
+                                    </View>
+                                ))
+                            )}
+                        </View>
+                    )}
+                </View>
+            </ScrollView>
 
             {/* 1. Go Online Modal (Prompt for Box No. & Can No.) */}
             <Modal visible={showOnlineModal} transparent animationType="fade">
@@ -570,6 +643,108 @@ const HomeScreen = ({ navigation }) => {
                     </View>
                 </View>
             </Modal>
+
+            {/* 4. Offline Sale Modal */}
+            <Modal visible={showOfflineSaleModal} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Record Offline Sale</Text>
+                        <Text style={styles.modalSub}>Record walkup sales directly on the street.</Text>
+
+                        <Text style={styles.modalLabel}>Quantity (Cups Sold)</Text>
+                        <View style={styles.quantityContainer}>
+                            <TouchableOpacity 
+                                style={styles.quantityBtn}
+                                onPress={() => setCupsToSell(Math.max(1, cupsToSell - 1))}
+                            >
+                                <Icon name="remove" size={20} color={COLORS.textPrimary} />
+                            </TouchableOpacity>
+                            <Text style={styles.quantityValueText}>{cupsToSell}</Text>
+                            <TouchableOpacity 
+                                style={styles.quantityBtn}
+                                onPress={() => setCupsToSell(Math.min(teaCups, cupsToSell + 1))}
+                            >
+                                <Icon name="add" size={20} color={COLORS.textPrimary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={styles.modalTotalText}>Total Amount: ₹{cupsToSell * 15}</Text>
+
+                        <Text style={styles.modalLabel}>Select Payment Option</Text>
+                        <View style={styles.offlinePaymentOptions}>
+                            <TouchableOpacity
+                                style={[styles.offlinePaymentBtn, { borderColor: COLORS.success }]}
+                                onPress={() => handleSelectOfflinePayment('cash')}
+                            >
+                                <Icon name="cash-outline" size={24} color={COLORS.success} />
+                                <Text style={[styles.offlinePaymentBtnText, { color: COLORS.success }]}>Cash Sale</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.offlinePaymentBtn, { borderColor: COLORS.secondary }]}
+                                onPress={() => handleSelectOfflinePayment('upi')}
+                            >
+                                <Icon name="qr-code-outline" size={24} color={COLORS.secondary} />
+                                <Text style={[styles.offlinePaymentBtnText, { color: COLORS.secondary }]}>UPI / QR</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity 
+                            style={styles.modalCancelBtnFull} 
+                            onPress={() => setShowOfflineSaleModal(false)}
+                        >
+                            <Text style={styles.modalCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* 5. Offline QR Payment Modal */}
+            <Modal visible={showOfflineQRModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { alignItems: 'center' }]}>
+                        <View style={styles.qrHeader}>
+                            <Text style={styles.qrTitle}>Scan to Pay</Text>
+                            <TouchableOpacity onPress={() => setShowOfflineQRModal(false)}>
+                                <Icon name="close" size={24} color={COLORS.textPrimary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.qrContainer}>
+                            <Image
+                                source={{ 
+                                    uri: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+                                        `upi://pay?pa=${PAYMENT_CONFIG.UPI_ID}&pn=${PAYMENT_CONFIG.MERCHANT_NAME}&am=${cupsToSell * 15}&cu=INR`
+                                    )}` 
+                                }}
+                                style={styles.qrImage}
+                                resizeMode="contain"
+                            />
+                            <View style={styles.qrLogoOverlay}>
+                                <Image
+                                    source={require('../../assets/logo.png')}
+                                    style={styles.qrLogo}
+                                />
+                            </View>
+                        </View>
+
+                        <Text style={styles.upiIdText}>{PAYMENT_CONFIG.UPI_ID}</Text>
+                        <Text style={styles.amountText}>Amount: ₹{cupsToSell * 15}</Text>
+
+                        <View style={{ width: '100%', marginTop: 12 }}>
+                            <TouchableOpacity
+                                style={[styles.modalConfirmBtnFull, { backgroundColor: COLORS.success }]}
+                                onPress={handleConfirmOfflineSale}
+                                disabled={isSubmittingSale}
+                            >
+                                <Text style={styles.modalConfirmText}>
+                                    {isSubmittingSale ? 'Recording Sale...' : 'Payment Received & Confirm'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 };
@@ -579,12 +754,25 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: COLORS.background,
     },
-    header: {
+    headerTopBar: {
         backgroundColor: COLORS.darkBg,
         paddingHorizontal: SIZES.padding,
-        paddingBottom: SIZES.padding,
+        paddingBottom: 12,
+    },
+    scrollContainer: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+    },
+    scrollContent: {
+        paddingBottom: 30,
+    },
+    scrollableHeader: {
+        backgroundColor: COLORS.darkBg,
+        paddingHorizontal: SIZES.padding,
+        paddingBottom: SIZES.padding + 10,
         borderBottomLeftRadius: 24,
         borderBottomRightRadius: 24,
+        gap: 12,
     },
     headerTop: {
         flexDirection: 'row',
@@ -1075,6 +1263,139 @@ const styles = StyleSheet.create({
         fontSize: SIZES.small,
         color: COLORS.textPrimary,
         fontWeight: '700',
+    },
+    recordSaleBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.secondary,
+        paddingVertical: 10,
+        borderRadius: 10,
+        marginTop: 10,
+        gap: 6,
+        ...SHADOWS.small,
+    },
+    recordSaleText: {
+        fontSize: SIZES.regular,
+        fontWeight: '800',
+        color: COLORS.textPrimary,
+    },
+    quantityContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 20,
+        marginVertical: 14,
+    },
+    quantityBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#F5F5F5',
+        borderWidth: 1,
+        borderColor: COLORS.lightGray,
+        justifyContent: 'center',
+        alignItems: 'center',
+        ...SHADOWS.small,
+    },
+    quantityValueText: {
+        fontSize: 22,
+        fontWeight: '800',
+        color: COLORS.textPrimary,
+        width: 40,
+        textAlign: 'center',
+    },
+    modalTotalText: {
+        fontSize: SIZES.large,
+        fontWeight: '800',
+        color: COLORS.primary,
+        textAlign: 'center',
+        marginBottom: 16,
+    },
+    offlinePaymentOptions: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 16,
+    },
+    offlinePaymentBtn: {
+        flex: 1,
+        borderWidth: 2,
+        borderRadius: 14,
+        paddingVertical: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#FCFCFC',
+        gap: 6,
+        ...SHADOWS.small,
+    },
+    offlinePaymentBtnText: {
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    modalCancelBtnFull: {
+        width: '100%',
+        paddingVertical: 12,
+        alignItems: 'center',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: COLORS.lightGray,
+        marginTop: 6,
+    },
+    modalConfirmBtnFull: {
+        width: '100%',
+        paddingVertical: 14,
+        alignItems: 'center',
+        borderRadius: 12,
+        ...SHADOWS.small,
+    },
+    qrHeader: {
+        flexDirection: 'row',
+        width: '100%',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 14,
+    },
+    qrTitle: {
+        fontSize: SIZES.large,
+        fontWeight: '800',
+        color: COLORS.textPrimary,
+    },
+    qrContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        backgroundColor: '#F9F9F9',
+        borderRadius: 16,
+        marginBottom: 14,
+        position: 'relative',
+    },
+    qrImage: {
+        width: 220,
+        height: 220,
+    },
+    qrLogoOverlay: {
+        position: 'absolute',
+        backgroundColor: COLORS.white,
+        padding: 4,
+        borderRadius: 8,
+    },
+    qrLogo: {
+        width: 32,
+        height: 32,
+    },
+    upiIdText: {
+        fontSize: SIZES.regular,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        fontWeight: '600',
+    },
+    amountText: {
+        fontSize: SIZES.large,
+        fontWeight: '800',
+        color: COLORS.textPrimary,
+        textAlign: 'center',
+        marginTop: 6,
+        marginBottom: 12,
     },
 });
 
