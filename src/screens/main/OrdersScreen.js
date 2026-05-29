@@ -13,15 +13,22 @@ import * as Animatable from 'react-native-animatable';
 import Geolocation from 'react-native-geolocation-service';
 import { PermissionsAndroid } from 'react-native';
 import { getNearbyOrders, getOrderHistory, getActiveOrders } from '../../services/orderService';
-import { listenToPlacedOrders } from '../../config/firestore';
+import { 
+    listenToPlacedOrders,
+    listenToEmployeeProgressOrders,
+    listenToEmployeeHistoryOrders
+} from '../../config/firestore';
 import { COLORS, SIZES, SHADOWS } from '../../utils/colors';
+import { useAuth } from '../../context/AuthContext';
 
 
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
 
 const OrdersScreen = ({ navigation }) => {
-    const [activeTab, setActiveTab] = useState('active');
+    const { employee } = useAuth();
+    const [activeTab, setActiveTab] = useState('active'); // 'active', 'progress', 'history'
     const [activeOrders, setActiveOrders] = useState([]);
+    const [progressOrders, setProgressOrders] = useState([]);
     const [historyOrders, setHistoryOrders] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -38,10 +45,13 @@ const OrdersScreen = ({ navigation }) => {
     };
 
     useEffect(() => {
-        // Firestore real-time listener for placed orders (active tab)
         let unsubscribe;
+        setLoading(true);
+
+        const empId = employee?.empId || 'EMP001';
+
         if (activeTab === 'active') {
-            setLoading(true);
+            // Placed/unassigned orders
             unsubscribe = listenToPlacedOrders(
                 (orders) => {
                     setActiveOrders(orders);
@@ -49,57 +59,37 @@ const OrdersScreen = ({ navigation }) => {
                 },
                 () => setLoading(false)
             );
-        } else {
-            loadHistory();
+        } else if (activeTab === 'progress') {
+            // In progress / confirmed orders accepted by this rider
+            unsubscribe = listenToEmployeeProgressOrders(
+                empId,
+                (orders) => {
+                    setProgressOrders(orders);
+                    setLoading(false);
+                },
+                () => setLoading(false)
+            );
+        } else if (activeTab === 'history') {
+            // Delivered/history orders completed by this rider
+            unsubscribe = listenToEmployeeHistoryOrders(
+                empId,
+                (orders) => {
+                    setHistoryOrders(orders);
+                    setLoading(false);
+                },
+                () => setLoading(false)
+            );
         }
-        return () => { if (unsubscribe) unsubscribe(); };
-    }, [activeTab]);
 
-    const loadHistory = async () => {
-        setLoading(true);
-        try {
-            const res = await getOrderHistory();
-            if (res.success) setHistoryOrders(res.data);
-        } catch (error) {
-            console.error('Error loading history:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, [activeTab, employee]);
 
     const loadOrders = async () => {
         setLoading(true);
-        try {
-            if (activeTab === 'active') {
-                const hasPermission = await requestLocationPermission();
-                if (hasPermission) {
-                    Geolocation.getCurrentPosition(
-                        async (position) => {
-                            const { latitude, longitude } = position.coords;
-                            const res = await getNearbyOrders(latitude, longitude);
-                            if (res.success) {
-                                setActiveOrders(res.data);
-                            }
-                            setLoading(false);
-                        },
-                        (error) => {
-                            console.error(error);
-                            setLoading(false);
-                        },
-                        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-                    );
-                } else {
-                    setLoading(false);
-                }
-            } else {
-                const res = await getOrderHistory();
-                if (res.success) setHistoryOrders(res.data);
-                setLoading(false);
-            }
-        } catch (error) {
-            console.error('Error loading orders:', error);
-            setLoading(false);
-        }
+        // Visual refresh triggers tab recalculation (real-time listeners do the actual data syncing)
+        setTimeout(() => setLoading(false), 500);
     };
 
     const getStatusColor = (status) => {
@@ -189,7 +179,11 @@ const OrdersScreen = ({ navigation }) => {
         </Animatable.View>
     );
 
-    const orders = activeTab === 'active' ? activeOrders : historyOrders;
+    const orders = activeTab === 'active' 
+        ? activeOrders 
+        : activeTab === 'progress' 
+        ? progressOrders 
+        : historyOrders;
 
     return (
         <View style={styles.container}>
@@ -225,6 +219,25 @@ const OrdersScreen = ({ navigation }) => {
                         </View>
                     )}
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'progress' && styles.tabActive]}
+                    onPress={() => setActiveTab('progress')}>
+                    <Icon
+                        name="play-outline"
+                        size={18}
+                        color={activeTab === 'progress' ? COLORS.primary : COLORS.textSecondary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'progress' && styles.tabTextActive]}>
+                        In Progress
+                    </Text>
+                    {progressOrders.length > 0 && (
+                        <View style={styles.badge}>
+                            <Text style={styles.badgeText}>{progressOrders.length}</Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
+
                 <TouchableOpacity
                     style={[styles.tab, activeTab === 'history' && styles.tabActive]}
                     onPress={() => setActiveTab('history')}>
@@ -243,18 +256,24 @@ const OrdersScreen = ({ navigation }) => {
             <FlatList
                 data={orders}
                 keyExtractor={(item) => item.id}
-                renderItem={activeTab === 'active' ? renderActiveOrder : renderHistoryOrder}
+                renderItem={(activeTab === 'active' || activeTab === 'progress') ? renderActiveOrder : renderHistoryOrder}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={
                     <View style={styles.emptyState}>
                         <Icon name="receipt-outline" size={60} color={COLORS.mediumGray} />
                         <Text style={styles.emptyTitle}>
-                            {activeTab === 'active' ? 'No Active Orders' : 'No Order History'}
+                            {activeTab === 'active' 
+                                ? 'No Active Orders' 
+                                : activeTab === 'progress' 
+                                ? 'No Orders In Progress' 
+                                : 'No Order History'}
                         </Text>
                         <Text style={styles.emptyText}>
                             {activeTab === 'active'
                                 ? 'Active orders will appear here'
+                                : activeTab === 'progress'
+                                ? 'Your accepted orders will appear here'
                                 : 'Completed orders will appear here'}
                         </Text>
                     </View>

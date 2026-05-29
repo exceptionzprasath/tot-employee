@@ -18,16 +18,34 @@ import * as Animatable from 'react-native-animatable';
 import { COLORS, SIZES, SHADOWS } from '../../utils/colors';
 import Button from '../../components/Button';
 import { useAuth } from '../../context/AuthContext';
-import { updateOrderStatus } from '../../services/orderService';
+import { updateOrderStatus, acceptOrder } from '../../services/orderService';
 import { PAYMENT_CONFIG, GOOGLE_MAPS_API_KEY } from '../../config/api';
 
 const { width } = Dimensions.get('window');
 
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
 
+// Calculate distance between two coordinates in km using Haversine formula
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const d = R * c; // Distance in km
+    return Math.round(d * 10) / 10; // Round to 1 decimal place
+};
+
+const deg2rad = (deg) => {
+    return deg * (Math.PI / 180);
+};
+
 const OrderDetailScreen = ({ route, navigation }) => {
     const { order } = route.params;
-    const { updateInventory } = useAuth();
+    const { updateInventory, currentLocation, employee } = useAuth();
     const [currentStatus, setCurrentStatus] = useState(order.status);
     const [loading, setLoading] = useState(false);
     const [visualProgress, setVisualProgress] = useState(0);
@@ -88,21 +106,21 @@ const OrderDetailScreen = ({ route, navigation }) => {
             if (currentStatus === 'placed') {
                 // ACCEPTING ORDER
                 const employeeInfo = {
-                    employeeId: user?.empId || 'EMP001',
-                    employeeName: user?.name || 'Partner',
-                    employeePhone: user?.phone || user?.mobile || '',
-                    employeeAvatar: user?.selfieUrl || null
+                    employeeId: employee?.empId || 'EMP001',
+                    employeeName: employee?.name || 'Partner',
+                    employeePhone: employee?.phone || employee?.mobile || '',
+                    employeeAvatar: employee?.selfieUrl || null
                 };
 
-                const response = await api.post(`/orders/${order.id}/accept`, employeeInfo);
-                if (response.data.success) {
+                const response = await acceptOrder(order.id, employeeInfo);
+                if (response.success) {
                     setCurrentStatus('confirmed');
                     Alert.alert('Success', 'Order accepted successfully');
                 }
             } else if (currentStatus === 'confirmed') {
                 // MARKING DELIVERED
-                const response = await api.patch(`/orders/${order.id}/status`, { status: 'delivered' });
-                if (response.data.success) {
+                const response = await updateOrderStatus(order.id, 'delivered');
+                if (response.success) {
                     setCurrentStatus('delivered');
                     
                     // Update Inventory
@@ -146,8 +164,25 @@ const OrderDetailScreen = ({ route, navigation }) => {
     const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(upiUrl)}`;
 
     const { latitude, longitude } = order.customerLocation || { latitude: 0, longitude: 0 };
-    const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=15&size=600x300&markers=color:red%7C${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`;
-    const expandedMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=17&size=800x800&markers=color:red%7C${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`;
+
+    // Real-time distance and estimated time calculation based on rider's current GPS location
+    const currentDistance = (currentLocation && currentLocation.latitude && currentLocation.longitude)
+        ? calculateDistance(currentLocation.latitude, currentLocation.longitude, latitude, longitude)
+        : (parseFloat(order.distance) || 0.5);
+
+    const currentEstTime = (currentLocation && currentLocation.latitude && currentLocation.longitude)
+        ? Math.max(1, Math.round(currentDistance * 4))
+        : (parseInt(order.estimatedTime, 10) || 2);
+
+    // If currentLocation is available, we overlay a path and markers for both rider and customer.
+    // When no center/zoom is provided, Google Maps Static API automatically fits all markers and paths perfectly.
+    const staticMapUrl = (currentLocation && currentLocation.latitude && currentLocation.longitude)
+        ? `https://maps.googleapis.com/maps/api/staticmap?size=600x300&markers=color:red%7C${latitude},${longitude}&markers=color:blue%7C${currentLocation.latitude},${currentLocation.longitude}&path=color:0x1976D2ff%7Cweight:5%7C${currentLocation.latitude},${currentLocation.longitude}%7C${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`
+        : `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=15&size=600x300&markers=color:red%7C${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`;
+
+    const expandedMapUrl = (currentLocation && currentLocation.latitude && currentLocation.longitude)
+        ? `https://maps.googleapis.com/maps/api/staticmap?size=800x800&markers=color:red%7C${latitude},${longitude}&markers=color:blue%7C${currentLocation.latitude},${currentLocation.longitude}&path=color:0x1976D2ff%7Cweight:5%7C${currentLocation.latitude},${currentLocation.longitude}%7C${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`
+        : `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=17&size=800x800&markers=color:red%7C${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`;
 
     const handleCallCustomer = () => {
         Linking.openURL(`tel:${order.customerPhone}`);
@@ -235,8 +270,30 @@ const OrderDetailScreen = ({ route, navigation }) => {
                     </View>
                 </Animatable.View>
 
-                {/* Customer Info */}
+                {/* Order Info */}
                 <Animatable.View animation="fadeInUp" delay={100} style={styles.card}>
+                    <Text style={styles.cardTitle}>Order Info</Text>
+                    <View style={styles.infoGrid}>
+                        <View style={styles.infoItem}>
+                            <Icon name="navigate-outline" size={20} color={COLORS.mediumGray} />
+                            <Text style={styles.infoValue}>{currentDistance} km</Text>
+                            <Text style={styles.infoLabel}>Distance</Text>
+                        </View>
+                        <View style={styles.infoItem}>
+                            <Icon name="time-outline" size={20} color={COLORS.mediumGray} />
+                            <Text style={styles.infoValue}>{currentEstTime} min</Text>
+                            <Text style={styles.infoLabel}>Est. Time</Text>
+                        </View>
+                        <View style={styles.infoItem}>
+                            <Icon name="cash-outline" size={20} color={COLORS.mediumGray} />
+                            <Text style={styles.infoValue}>₹{Math.round(order.totalAmount * 0.2)}</Text>
+                            <Text style={styles.infoLabel}>Your Earning</Text>
+                        </View>
+                    </View>
+                </Animatable.View>
+
+                {/* Customer Info */}
+                <Animatable.View animation="fadeInUp" delay={200} style={styles.card}>
                     <Text style={styles.cardTitle}>Customer Details</Text>
                     <View style={styles.customerRow}>
                         <View style={styles.customerAvatar}>
@@ -272,6 +329,12 @@ const OrderDetailScreen = ({ route, navigation }) => {
                                 <TouchableOpacity style={styles.expandBtn} onPress={() => setIsMapExpanded(true)}>
                                     <Icon name="expand-outline" size={18} color={COLORS.white} />
                                 </TouchableOpacity>
+                                {currentLocation && (
+                                    <View style={styles.mapRouteBadge}>
+                                        <Icon name="time-outline" size={12} color={COLORS.white} />
+                                        <Text style={styles.mapRouteBadgeText}>{currentEstTime} mins ({currentDistance} km)</Text>
+                                    </View>
+                                )}
                                 <TouchableOpacity style={styles.directionsBtn} onPress={handleNavigate}>
                                     <Icon name="navigate" size={18} color={COLORS.white} />
                                     <Text style={styles.directionsText}>Go</Text>
@@ -282,7 +345,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
                 </Animatable.View>
 
                 {/* Order Items */}
-                <Animatable.View animation="fadeInUp" delay={200} style={styles.card}>
+                <Animatable.View animation="fadeInUp" delay={300} style={styles.card}>
                     <Text style={styles.cardTitle}>Order Items</Text>
                     {order.items?.map((item, index) => (
                         <View key={index} style={styles.itemRow}>
@@ -296,28 +359,6 @@ const OrderDetailScreen = ({ route, navigation }) => {
                     <View style={styles.totalRow}>
                         <Text style={styles.totalLabel}>Total</Text>
                         <Text style={styles.totalAmount}>₹{order.totalAmount}</Text>
-                    </View>
-                </Animatable.View>
-
-                {/* Order Info */}
-                <Animatable.View animation="fadeInUp" delay={300} style={styles.card}>
-                    <Text style={styles.cardTitle}>Order Info</Text>
-                    <View style={styles.infoGrid}>
-                        <View style={styles.infoItem}>
-                            <Icon name="navigate-outline" size={20} color={COLORS.mediumGray} />
-                            <Text style={styles.infoValue}>{order.distance} km</Text>
-                            <Text style={styles.infoLabel}>Distance</Text>
-                        </View>
-                        <View style={styles.infoItem}>
-                            <Icon name="time-outline" size={20} color={COLORS.mediumGray} />
-                            <Text style={styles.infoValue}>{order.estimatedTime} min</Text>
-                            <Text style={styles.infoLabel}>Est. Time</Text>
-                        </View>
-                        <View style={styles.infoItem}>
-                            <Icon name="cash-outline" size={20} color={COLORS.mediumGray} />
-                            <Text style={styles.infoValue}>₹{Math.round(order.totalAmount * 0.2)}</Text>
-                            <Text style={styles.infoLabel}>Your Earning</Text>
-                        </View>
                     </View>
                 </Animatable.View>
 
@@ -949,6 +990,20 @@ const styles = StyleSheet.create({
     },
     actionBtn: {
         marginBottom: Platform.OS === 'ios' ? 20 : 0,
+    },
+    mapRouteBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 12,
+        gap: 4,
+    },
+    mapRouteBadgeText: {
+        color: COLORS.white,
+        fontSize: 10,
+        fontWeight: '600',
     },
 });
 

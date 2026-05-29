@@ -11,10 +11,13 @@ let locationInterval = null;
 export const initSocket = () => {
     if (!socket) {
         socket = io(API_BASE_URL, {
-            transports: ['websocket'],
+            transports: ['polling', 'websocket'],
             reconnection: true,
             reconnectionAttempts: 10,
             reconnectionDelay: 2000,
+            extraHeaders: {
+                'ngrok-skip-browser-warning': 'true',
+            },
         });
 
         socket.on('connect', () => {
@@ -32,20 +35,28 @@ export const initSocket = () => {
     return socket;
 };
 
-/**
- * Emit rider_go_online with employee data and GPS location.
- */
-export const emitGoOnline = (employeeData, location, fcmToken) => {
+export const emitGoOnline = (employeeData, location, fcmToken, extraData = {}) => {
     const s = initSocket();
-    s.emit('rider_go_online', {
+    const payload = {
         employeeId: employeeData.empId,
         employeeName: employeeData.name,
         employeePhone: employeeData.phone || employeeData.mobile,
         lat: location.latitude,
         lng: location.longitude,
         fcmToken: fcmToken || null,
-    });
-    console.log('[Socket] Emitted rider_go_online with FCM token');
+        ...extraData
+    };
+
+    if (s.connected) {
+        s.emit('rider_go_online', payload);
+        console.log('[Socket] Emitted rider_go_online immediately (already connected)');
+    } else {
+        console.log('[Socket] Waiting for connection before emitting rider_go_online...');
+        s.once('connect', () => {
+            s.emit('rider_go_online', payload);
+            console.log('[Socket] Emitted rider_go_online after connect');
+        });
+    }
 };
 
 /**

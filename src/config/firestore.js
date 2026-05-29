@@ -61,3 +61,47 @@ export const listenToCustomerOrders = (customerPhone, onOrders, onError) => {
             }
         );
 };
+
+/**
+ * Listen to an employee's confirmed (in progress) orders in realtime.
+ * Returns an unsubscribe function.
+ */
+export const listenToEmployeeProgressOrders = (employeeId, onOrders, onError) => {
+    return ordersCollection()
+        .where('employeeId', '==', employeeId)
+        .where('status', '==', 'confirmed')
+        .onSnapshot(
+            snapshot => {
+                const orders = snapshot.docs
+                    .map(doc => doc.data())
+                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                onOrders(orders);
+            },
+            error => {
+                console.error('Firestore listenToEmployeeProgressOrders error:', error);
+                if (onError) onError(error);
+            }
+        );
+};
+
+/**
+ * Listen to an employee's delivered (history) orders in realtime.
+ * Returns an unsubscribe function.
+ */
+export const listenToEmployeeHistoryOrders = (employeeId, onOrders, onError) => {
+    return ordersCollection()
+        .where('employeeId', '==', employeeId)
+        .where('status', '==', 'delivered')
+        .onSnapshot(
+            snapshot => {
+                const orders = snapshot.docs
+                    .map(doc => doc.data())
+                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                onOrders(orders);
+            },
+            error => {
+                console.error('Firestore listenToEmployeeHistoryOrders error:', error);
+                if (onError) onError(error);
+            }
+        );
+};

@@ -1,5 +1,6 @@
-// API Configuration for Thambioru Tea Employee App
-export const API_BASE_URL = 'https://settlo-tot-backend.vercel.app';
+import { API_BASE_URL } from '../services/api';
+
+export { API_BASE_URL };
 
 export const API_ENDPOINTS = {
     // Auth
