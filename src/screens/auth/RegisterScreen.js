@@ -19,7 +19,7 @@ import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import * as Animatable from 'react-native-animatable';
 import { COLORS, SIZES, SHADOWS } from '../../utils/colors';
 import Button from '../../components/Button';
-import { registerEmployee } from '../../services/authService';
+import { registerEmployee, checkPhoneExists } from '../../services/authService';
 
 const { width } = Dimensions.get('window');
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
@@ -38,7 +38,9 @@ const getTodayDateString = () => {
 
 const RegisterScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
+    const [phoneError, setPhoneError] = useState('');
     const [formData, setFormData] = useState({
+        employeeType: 'Full Time',
         name: '',
         email: '',
         mobile: '',
@@ -68,6 +70,27 @@ const RegisterScreen = ({ navigation }) => {
 
     const handleInputChange = (name, value) => {
         setFormData(prev => ({ ...prev, [name]: value }));
+        if (name === 'mobile') {
+            if (value.length === 10) {
+                checkMobileNumber(value);
+            } else {
+                setPhoneError('');
+            }
+        }
+    };
+
+    const checkMobileNumber = async (number) => {
+        try {
+            const response = await checkPhoneExists(number);
+            if (response.success && response.exists) {
+                setPhoneError('This mobile number is already registered.');
+                Alert.alert('Already Registered', 'This mobile number is already registered in our database. Please use a different number or log in.');
+            } else {
+                setPhoneError('');
+            }
+        } catch (error) {
+            console.log('Error checking mobile number:', error);
+        }
     };
 
     const pickImage = async (field, type = 'library') => {
@@ -105,6 +128,14 @@ const RegisterScreen = ({ navigation }) => {
 
     const handleRegister = async () => {
         // Validation
+        if (!formData.employeeType) {
+            Alert.alert('Error', 'Please select an employment type');
+            return;
+        }
+        if (phoneError) {
+            Alert.alert('Error', 'This mobile number is already registered.');
+            return;
+        }
         if (!formData.name || !formData.mobile || !formData.empId) {
             Alert.alert('Error', 'Name, Mobile and Employee ID are required');
             return;
@@ -210,6 +241,27 @@ const RegisterScreen = ({ navigation }) => {
                         <Text style={styles.sectionTitle}>Basic Information</Text>
 
                         <View style={styles.inputItem}>
+                            <Text style={styles.inputLabel}>Employment Type</Text>
+                            <View style={styles.chipRow}>
+                                {['Full Time', 'Part Time'].map(type => (
+                                    <TouchableOpacity
+                                        key={type}
+                                        style={[
+                                            styles.chip,
+                                            formData.employeeType === type && styles.chipActive
+                                        ]}
+                                        onPress={() => handleInputChange('employeeType', type)}
+                                    >
+                                        <Text style={[
+                                            styles.chipText,
+                                            formData.employeeType === type && styles.chipTextActive
+                                        ]}>{type}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+
+                        <View style={styles.inputItem}>
                             <Text style={styles.inputLabel}>Full Name</Text>
                             <View style={styles.inputWrapper}>
                                 <Icon name="person-outline" size={18} color={COLORS.mediumGray} />
@@ -225,16 +277,18 @@ const RegisterScreen = ({ navigation }) => {
                         <View style={styles.row}>
                             <View style={{ flex: 1.2, marginRight: 10 }}>
                                 <Text style={styles.inputLabel}>Mobile Number</Text>
-                                <View style={styles.inputWrapper}>
-                                    <Icon name="call-outline" size={18} color={COLORS.mediumGray} />
+                                <View style={[styles.inputWrapper, phoneError ? { borderColor: COLORS.error } : null]}>
+                                    <Icon name="call-outline" size={18} color={phoneError ? COLORS.error : COLORS.mediumGray} />
                                     <TextInput
                                         style={styles.textInput}
                                         placeholder="Mobile"
                                         keyboardType="phone-pad"
+                                        maxLength={10}
                                         value={formData.mobile}
                                         onChangeText={(val) => handleInputChange('mobile', val)}
                                     />
                                 </View>
+                                {phoneError ? <Text style={styles.errorText}>{phoneError}</Text> : null}
                             </View>
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.inputLabel}>Employee ID</Text>
@@ -600,6 +654,12 @@ const styles = StyleSheet.create({
     },
     chipTextActive: {
         color: COLORS.white,
+    },
+    errorText: {
+        color: COLORS.error,
+        fontSize: 10,
+        marginTop: 4,
+        fontWeight: '600',
     },
 });
 

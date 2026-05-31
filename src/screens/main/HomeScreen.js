@@ -116,26 +116,31 @@ const HomeScreen = ({ navigation }) => {
         };
     }, []);
 
-    // ⏰ 30-Second Ticking Timer for Placed Orders
+    // ⏰ 60-Second Ticking Timer for Placed Orders
     useEffect(() => {
         const orderTimer = setInterval(() => {
             const now = Date.now();
             const valid = orders.filter(o => {
                 const age = now - new Date(o.createdAt).getTime();
-                return age <= 30000 && (o.status === 'placed' || o.status === 'pending');
+                return age <= 60000 && (o.status === 'placed' || o.status === 'pending');
             });
             setFilteredOrders(valid);
         }, 1000);
         return () => clearInterval(orderTimer);
     }, [orders]);
 
-    // Shift Countdown Timer (Ticking down to 3:00 PM / 8 hour duration)
+    // Shift Countdown Timer (Ticking down strictly to 3:00 PM / 8:00 PM today)
     useEffect(() => {
         let timer;
         if (isOnline && shiftStartTime) {
             timer = setInterval(() => {
-                const elapsed = Date.now() - shiftStartTime;
-                const remaining = Math.max(0, SHIFT_DURATION - elapsed);
+                const end = new Date();
+                if (employee?.employeeType === 'Part Time') {
+                    end.setHours(20, 0, 0, 0); // 8:00 PM today
+                } else {
+                    end.setHours(15, 0, 0, 0); // 3:00 PM today
+                }
+                const remaining = Math.max(0, end.getTime() - Date.now());
 
                 if (remaining === 0) {
                     setTimeLeft('00:00:00');
@@ -154,7 +159,7 @@ const HomeScreen = ({ navigation }) => {
             setTimeLeft('');
         }
         return () => clearInterval(timer);
-    }, [isOnline, shiftStartTime]);
+    }, [isOnline, shiftStartTime, employee]);
 
     // Monitor low tea to trigger warning overlay
     useEffect(() => {
@@ -170,10 +175,16 @@ const HomeScreen = ({ navigation }) => {
             setInputCan('');
             setShowOnlineModal(true);
         } else {
-            Alert.alert('Go Offline', 'Are you sure you want to go offline?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Offline', onPress: () => updateStatus('offline') }
-            ]);
+            if (teaCups > 0) {
+                // If there are tea cups remaining, bypass initial confirm dialog 
+                // and let the AuthContext updateStatus prompt the Emergency Offline flow directly.
+                updateStatus('offline');
+            } else {
+                Alert.alert('Go Offline', 'Are you sure you want to go offline?', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Offline', onPress: () => updateStatus('offline') }
+                ]);
+            }
         }
     };
 
@@ -295,7 +306,7 @@ const HomeScreen = ({ navigation }) => {
     };
 
     const renderOrderCard = ({ item }) => {
-        const remainingTime = Math.max(0, 30 - Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 1000));
+        const remainingTime = Math.max(0, 60 - Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 1000));
 
         return (
             <Animatable.View animation="slideInUp" duration={400} style={styles.orderCard}>
@@ -303,9 +314,9 @@ const HomeScreen = ({ navigation }) => {
                     <View style={styles.orderIdBadge}>
                         <Text style={styles.orderId}>#{item.id}</Text>
                     </View>
-                    <View style={[styles.timerBadge, { backgroundColor: remainingTime <= 10 ? COLORS.error + '20' : COLORS.online + '20' }]}>
-                        <Icon name="alarm-outline" size={14} color={remainingTime <= 10 ? COLORS.error : COLORS.online} />
-                        <Text style={[styles.timerText, { color: remainingTime <= 10 ? COLORS.error : COLORS.online }]}>{remainingTime}s left</Text>
+                    <View style={[styles.timerBadge, { backgroundColor: remainingTime <= 15 ? COLORS.error + '20' : COLORS.online + '20' }]}>
+                        <Icon name="alarm-outline" size={14} color={remainingTime <= 15 ? COLORS.error : COLORS.online} />
+                        <Text style={[styles.timerText, { color: remainingTime <= 15 ? COLORS.error : COLORS.online }]}>{remainingTime}s left</Text>
                     </View>
                 </View>
 
@@ -357,8 +368,12 @@ const HomeScreen = ({ navigation }) => {
             <View style={[styles.headerTopBar, { paddingTop: Platform.OS === 'ios' ? 44 : STATUSBAR_HEIGHT + 10 }]}>
                 <View style={styles.headerTop}>
                     <View>
-                        <Text style={styles.shiftBadge}>FULL TIME SHIFT</Text>
-                        <Text style={styles.shiftTimeLabel}>7:00 AM - 3:00 PM</Text>
+                        <Text style={styles.shiftBadge}>
+                            {employee?.employeeType === 'Part Time' ? 'PART TIME SHIFT' : 'FULL TIME SHIFT'}
+                        </Text>
+                        <Text style={styles.shiftTimeLabel}>
+                            {employee?.employeeType === 'Part Time' ? '3:00 PM - 8:00 PM' : '7:00 AM - 3:00 PM'}
+                        </Text>
                     </View>
                     <View style={styles.headerRight}>
                         <View style={styles.onlineToggle}>
@@ -415,11 +430,19 @@ const HomeScreen = ({ navigation }) => {
                                 <Text style={styles.gridValue}>{canIndex}/3</Text>
                                 <Text style={styles.gridLabel}>Cans Used</Text>
                             </View>
-                            <View style={styles.gridCard}>
-                                <Icon name="star" size={18} color={COLORS.warning} />
-                                <Text style={styles.gridValue}>4.8</Text>
-                                <Text style={styles.gridLabel}>Rider Rating</Text>
-                            </View>
+                            {employee?.employeeType === 'Full Time' ? (
+                                <View style={styles.gridCard}>
+                                    <Icon name="flash" size={18} color={COLORS.secondary} />
+                                    <Text style={styles.gridValue}>6 Hours</Text>
+                                    <Text style={styles.gridLabel}>₹250 Target</Text>
+                                </View>
+                            ) : (
+                                <View style={styles.gridCard}>
+                                    <Icon name="trending-up" size={18} color={COLORS.secondary} />
+                                    <Text style={styles.gridValue}>₹2.50</Text>
+                                    <Text style={styles.gridLabel}>Per Tea Rate</Text>
+                                </View>
+                            )}
                         </View>
 
                         {/* Active Box and Can Info Cards */}
@@ -525,7 +548,7 @@ const HomeScreen = ({ navigation }) => {
                                     <Icon name="cafe-outline" size={60} color={COLORS.mediumGray} />
                                     <Text style={styles.emptyTitle}>No Orders Available</Text>
                                     <Text style={styles.emptyText}>
-                                        {isOnline ? 'Riders nearby will see orders placed in last 30s' : 'Go online to receive nearby orders'}
+                                        {isOnline ? 'Riders nearby will see orders placed in last 60s' : 'Go online to receive nearby orders'}
                                     </Text>
                                     {!isOnline && (
                                         <TouchableOpacity
@@ -764,7 +787,7 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.background,
     },
     scrollContent: {
-        paddingBottom: 30,
+        paddingBottom: 100,
     },
     scrollableHeader: {
         backgroundColor: COLORS.darkBg,

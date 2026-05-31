@@ -15,6 +15,36 @@ export const registerEmployee = async (formData) => {
     }
 };
 
+export const checkPhoneExists = async (phone) => {
+    try {
+        const response = await api.post('/auth/check-phone', { phone });
+        return response.data;
+    } catch (error) {
+        console.error('Check Phone API Error:', error);
+        throw error;
+    }
+};
+
+export const updateBankDetails = async (phone, bankDetails) => {
+    try {
+        const response = await api.patch('/auth/bank-details', { phone, bankDetails });
+        return response.data;
+    } catch (error) {
+        console.error('Update Bank Details API Error:', error);
+        throw error;
+    }
+};
+
+export const updateWorkHistory = async (phone, workHistory) => {
+    try {
+        const response = await api.patch('/auth/work-history', { phone, workHistory });
+        return response.data;
+    } catch (error) {
+        console.error('Update Work History API Error:', error);
+        throw error;
+    }
+};
+
 export const loginEmployee = async (employeeId, pin) => {
     try {
         const response = await api.post('/auth/login', { employeeId, pin });
@@ -51,6 +81,9 @@ export const checkSession = async (empId) => {
 
 export default {
     registerEmployee,
+    checkPhoneExists,
+    updateBankDetails,
+    updateWorkHistory,
     loginEmployee,
     getEmployeeStats,
     checkSession

@@ -19,20 +19,25 @@ const { width } = Dimensions.get('window');
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
 
 const EarningsScreen = ({ navigation }) => {
-    const { employee } = useAuth();
+    const { employee, totalTeasSold, shiftStartTime } = useAuth();
     const [period, setPeriod] = useState('today');
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        loadStats();
-    }, []);
+        if (employee) {
+            loadStats();
+        }
+    }, [employee]);
 
     const loadStats = async () => {
         try {
-            const response = await getEmployeeStats();
-            if (response.success) {
-                setStats(response.stats);
+            const empId = employee?.empId || employee?.id;
+            if (empId) {
+                const response = await getEmployeeStats(empId);
+                if (response.success) {
+                    setStats(response.stats);
+                }
             }
         } catch (error) {
             console.error('Error loading stats:', error);
@@ -42,29 +47,120 @@ const EarningsScreen = ({ navigation }) => {
     };
 
     const getEarningsData = () => {
-        if (!stats) return { orders: 0, earnings: 0, credits: 0 };
+        const isPartTime = employee?.employeeType === 'Part Time';
+        const teaRate = 2.50;
 
-        switch (period) {
-            case 'today':
-                return { orders: stats.todayOrders, earnings: stats.todayEarnings, credits: 45 };
-            case 'week':
-                return { orders: stats.weeklyOrders, earnings: stats.weeklyEarnings, credits: 320 };
-            case 'month':
-                return { orders: stats.monthlyOrders, earnings: stats.monthlyEarnings, credits: 1250 };
-            default:
-                return { orders: 0, earnings: 0, credits: 0 };
+        if (isPartTime) {
+            // Part-time calculations (no hours constraints)
+            const todayTeas = totalTeasSold || 0;
+            const weekTeas = stats ? (stats.weeklyOrders * 120) : todayTeas;
+            const monthTeas = stats ? (stats.monthlyOrders * 120) : todayTeas;
+
+            switch (period) {
+                case 'today':
+                    return { orders: stats?.todayOrders || 0, earnings: todayTeas * teaRate, credits: todayTeas };
+                case 'week':
+                    return { orders: stats?.weeklyOrders || 0, earnings: weekTeas * teaRate, credits: weekTeas };
+                case 'month':
+                    return { orders: stats?.monthlyOrders || 0, earnings: monthTeas * teaRate, credits: monthTeas };
+                default:
+                    return { orders: 0, earnings: 0, credits: 0 };
+            }
+        } else {
+            // Full-time calculations (fixed salary, ₹250 bonus if 360 cups sold within 6 hours of shift start)
+            const todayTeas = totalTeasSold || 0;
+            let achievedIncentive = false;
+            let timeElapsedMs = 0;
+            
+            if (shiftStartTime) {
+                timeElapsedMs = Date.now() - shiftStartTime;
+            }
+            
+            // Check if sold >= 360 teas and elapsed time <= 6 hours
+            if (todayTeas >= 360 && timeElapsedMs > 0 && timeElapsedMs <= 6 * 60 * 60 * 1000) {
+                achievedIncentive = true;
+            }
+
+            const todayEarnings = achievedIncentive ? 250 : 0;
+            const weekEarnings = stats ? stats.weeklyEarnings : 0;
+            const monthEarnings = stats ? stats.monthlyEarnings : 0;
+
+            switch (period) {
+                case 'today':
+                    return { 
+                        orders: stats?.todayOrders || 0, 
+                        earnings: todayEarnings, 
+                        credits: todayTeas,
+                        incentiveDetails: {
+                            achieved: achievedIncentive,
+                            targetCups: 360,
+                            currentCups: todayTeas,
+                            hoursElapsed: timeElapsedMs / (1000 * 60 * 60)
+                        }
+                    };
+                case 'week':
+                    return { orders: stats?.weeklyOrders || 0, earnings: weekEarnings, credits: stats ? 320 : 0 };
+                case 'month':
+                    return { orders: stats?.monthlyOrders || 0, earnings: monthEarnings, credits: stats ? 1250 : 0 };
+                default:
+                    return { orders: 0, earnings: 0, credits: 0 };
+            }
         }
     };
 
     const data = getEarningsData();
 
-    const recentTransactions = [
-        { id: 1, type: 'delivery', orderId: 'ORD004', amount: 15, time: '2 hours ago' },
-        { id: 2, type: 'delivery', orderId: 'ORD003', amount: 22, time: '4 hours ago' },
-        { id: 3, type: 'credit', orderId: 'ORD003', amount: 10, time: '4 hours ago' },
-        { id: 4, type: 'bonus', description: 'Peak hour bonus', amount: 50, time: 'Yesterday' },
-        { id: 5, type: 'delivery', orderId: 'ORD002', amount: 18, time: 'Yesterday' },
-    ];
+    const getRecentTransactions = () => {
+        const list = [];
+        const isPartTime = employee?.employeeType === 'Part Time';
+        
+        // Load the workHistory map from employee record
+        const workHistory = employee?.workHistory || {};
+        
+        Object.keys(workHistory)
+            .sort((a, b) => new Date(b) - new Date(a)) // Sort newest first
+            .slice(0, 5) // Take top 5
+            .forEach((dateStr, idx) => {
+                const log = workHistory[dateStr];
+                const sales = parseInt(log.sales || 0, 10);
+                
+                if (isPartTime) {
+                    list.push({
+                        id: String(idx),
+                        type: 'delivery',
+                        orderId: `${sales} Teas Sold`,
+                        amount: sales * 2.50,
+                        time: dateStr
+                    });
+                } else {
+                    const hitTarget = sales >= 360;
+                    list.push({
+                        id: String(idx),
+                        type: hitTarget ? 'bonus' : 'delivery',
+                        orderId: hitTarget ? `Target Bonus!` : `${sales} Teas Sold`,
+                        description: hitTarget ? `Target Bonus (360 Teas!)` : `Shift Completed`,
+                        amount: hitTarget ? 250 : 0,
+                        time: dateStr
+                    });
+                }
+            });
+            
+        if (list.length === 0) {
+            return [
+                {
+                    id: 'welcome',
+                    type: 'bonus',
+                    description: 'Employee Account Activated',
+                    amount: 0,
+                    time: employee?.dateOfJoining || 'Account Created'
+                }
+            ];
+        }
+        
+        return list;
+    };
+
+    const recentTransactions = getRecentTransactions();
 
     return (
         <View style={styles.container}>
@@ -99,19 +195,25 @@ const EarningsScreen = ({ navigation }) => {
 
                 {/* Earnings Card */}
                 <Animatable.View animation="fadeInUp" style={styles.earningsCard}>
-                    <Text style={styles.earningsLabel}>Total Earnings</Text>
+                    <Text style={styles.earningsLabel}>
+                        {employee?.employeeType === 'Full Time' ? 'Target Incentive Bonus' : 'Total Earnings'}
+                    </Text>
                     <Text style={styles.earningsAmount}>₹{data.earnings}</Text>
                     <View style={styles.earningsBreakdown}>
                         <View style={styles.breakdownItem}>
-                            <Icon name="bicycle-outline" size={20} color={COLORS.primary} />
-                            <Text style={styles.breakdownValue}>₹{data.earnings - data.credits}</Text>
-                            <Text style={styles.breakdownLabel}>Deliveries</Text>
+                            <Icon name={employee?.employeeType === 'Part Time' ? "trending-up-outline" : "gift-outline"} size={20} color={COLORS.primary} />
+                            <Text style={styles.breakdownValue}>
+                                {employee?.employeeType === 'Part Time' ? '₹2.50' : (data.earnings > 0 ? '₹250' : '₹0')}
+                            </Text>
+                            <Text style={styles.breakdownLabel}>
+                                {employee?.employeeType === 'Part Time' ? 'Per Tea Rate' : 'Bonus Earned'}
+                            </Text>
                         </View>
                         <View style={styles.divider} />
                         <View style={styles.breakdownItem}>
                             <Icon name="cafe-outline" size={20} color={COLORS.error} />
                             <Text style={styles.breakdownValue}>{data.credits}</Text>
-                            <Text style={styles.breakdownLabel}>Credits</Text>
+                            <Text style={styles.breakdownLabel}>Cups Sold</Text>
                         </View>
                         <View style={styles.divider} />
                         <View style={styles.breakdownItem}>
@@ -120,6 +222,29 @@ const EarningsScreen = ({ navigation }) => {
                             <Text style={styles.breakdownLabel}>Orders</Text>
                         </View>
                     </View>
+
+                    {/* Dynamic Full Time Incentive Progress Display */}
+                    {employee?.employeeType === 'Full Time' && period === 'today' && (
+                        <View style={{ width: '100%', marginTop: 15, padding: 12, backgroundColor: COLORS.primary + '08', borderRadius: 8, borderWidth: 1, borderColor: COLORS.primary + '15' }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.primary, marginBottom: 4 }}>
+                                ⚡ Full-Time Speed Target
+                            </Text>
+                            <Text style={{ fontSize: 11, color: COLORS.textSecondary, lineHeight: 16 }}>
+                                Sell 3 cans (360 cups of tea) within 6 hours of starting your shift to get a special ₹250 cash bonus!
+                            </Text>
+                            <View style={{ height: 6, backgroundColor: COLORS.gray, borderRadius: 3, marginTop: 10, overflow: 'hidden' }}>
+                                <View style={{ height: '100%', width: `${Math.min(100, (totalTeasSold / 360) * 100)}%`, backgroundColor: COLORS.primary }} />
+                            </View>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                                <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textPrimary }}>
+                                    Progress: {totalTeasSold}/360 cups
+                                </Text>
+                                <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textPrimary }}>
+                                    {data.incentiveDetails?.achieved ? '🎉 Achieved ₹250!' : (shiftStartTime ? `${(data.incentiveDetails?.hoursElapsed || 0).toFixed(1)}h elapsed` : 'Start shift to track')}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
                 </Animatable.View>
 
                 {/* Quick Stats */}
@@ -132,11 +257,11 @@ const EarningsScreen = ({ navigation }) => {
                         <Text style={styles.statLabel}>Avg per Order</Text>
                     </Animatable.View>
                     <Animatable.View animation="fadeInUp" delay={200} style={styles.statCard}>
-                        <View style={[styles.statIcon, { backgroundColor: COLORS.warning + '15' }]}>
-                            <Icon name="star" size={20} color={COLORS.warning} />
+                        <View style={[styles.statIcon, { backgroundColor: COLORS.error + '15' }]}>
+                            <Icon name="cafe-outline" size={20} color={COLORS.error} />
                         </View>
-                        <Text style={styles.statValue}>{stats?.rating || '4.8'}</Text>
-                        <Text style={styles.statLabel}>Rating</Text>
+                        <Text style={styles.statValue}>{data.credits}</Text>
+                        <Text style={styles.statLabel}>Cups Sold Today</Text>
                     </Animatable.View>
                 </View>
 

@@ -20,8 +20,59 @@ import { useAuth } from '../../context/AuthContext';
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
 
 const ProfileScreen = ({ navigation }) => {
-    const { employee, isOnline, logout, updateStatus, refillDrum } = useAuth();
+    const { employee, isOnline, logout, updateStatus, refillDrum, totalTeasSold, shiftStartTime } = useAuth();
     const [isDocsVisible, setIsDocsVisible] = React.useState(false);
+
+    const completedShifts = employee?.workHistory ? Object.keys(employee.workHistory).length : 0;
+    const totalCupsSold = employee?.workHistory 
+        ? Object.values(employee.workHistory).reduce((sum, log) => sum + parseInt(log.sales || 0, 10), 0) 
+        : 0;
+
+    const getTodayStats = () => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayLog = employee?.workHistory ? employee.workHistory[todayStr] : null;
+        
+        const cups = Math.max(totalTeasSold || 0, parseInt(todayLog?.sales || 0, 10));
+        
+        let duration = '—';
+        if (isOnline && shiftStartTime) {
+            const diffMs = Date.now() - shiftStartTime;
+            const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            duration = `${diffHrs}h ${diffMins}m`;
+        } else if (todayLog?.duration) {
+            duration = todayLog.duration;
+        }
+        
+        let earnings = 0;
+        if (employee?.employeeType === 'Part Time') {
+            earnings = cups * 2.50;
+        } else {
+            // Full-time speed target ₹250
+            const hitTarget = cups >= 360;
+            let achieved = false;
+            if (hitTarget) {
+                if (shiftStartTime) {
+                    const elapsed = Date.now() - shiftStartTime;
+                    if (elapsed <= 6 * 60 * 60 * 1000) {
+                        achieved = true;
+                    }
+                } else if (todayLog) {
+                    const durStr = todayLog.duration || '';
+                    const match = durStr.match(/(\d+)h/);
+                    if (match) {
+                        const hrs = parseInt(match[1], 10);
+                        if (hrs <= 6) achieved = true;
+                    }
+                }
+            }
+            earnings = achieved ? 250 : 0;
+        }
+        
+        return { cups, duration, earnings };
+    };
+    
+    const todayStats = getTodayStats();
 
     const handleOpenDoc = async (url) => {
         if (!url) {
@@ -35,22 +86,7 @@ const ProfileScreen = ({ navigation }) => {
         }
     };
 
-    const handleRefillRequest = () => {
-        Alert.alert(
-            'Refill Request',
-            'Would you like to request a tea refill for your drum?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Request Refill',
-                    onPress: () => {
-                        refillDrum();
-                        Alert.alert('Success', 'Refill request sent! Your drum is now marked as full.');
-                    }
-                }
-            ]
-        );
-    };
+
 
     const handleLogout = () => {
         Alert.alert(
@@ -136,17 +172,12 @@ const ProfileScreen = ({ navigation }) => {
                             ]} />
                         </View>
                         <View style={styles.profileInfo}>
-                            <Text style={styles.profileName}>{employee?.name || 'Employee'}</Text>
-                            <Text style={styles.profileId}>ID: {employee?.id || 'EMP001'}</Text>
-                            <View style={styles.ratingRow}>
-                                <Icon name="star" size={14} color={COLORS.secondary} />
-                                <Text style={styles.profileRating}>{employee?.rating || '4.8'}</Text>
-                                <Text style={styles.profileDeliveries}>{employee?.totalOrders || 156} deliveries</Text>
-                            </View>
-                        </View>
-                        <TouchableOpacity style={styles.editButton}>
-                            <Icon name="create-outline" size={18} color={COLORS.white} />
-                        </TouchableOpacity>
+                             <Text style={styles.profileName}>{employee?.name || 'Employee'}</Text>
+                             <Text style={styles.profileId}>ID: {employee?.empId || employee?.id || 'EMP001'}</Text>
+                             <View style={styles.ratingRow}>
+                                 <Text style={styles.profileDeliveries}>{totalCupsSold} cups sold ({completedShifts} shifts)</Text>
+                             </View>
+                         </View>
                     </Animatable.View>
                 </View>
 
@@ -182,18 +213,18 @@ const ProfileScreen = ({ navigation }) => {
                     {/* Quick Stats */}
                     <View style={styles.statsRow}>
                         <View style={styles.statItem}>
-                            <Text style={styles.statValue}>{employee?.todayOrders || 12}</Text>
-                            <Text style={styles.statLabel}>Today</Text>
+                            <Text style={styles.statValue}>{todayStats.cups}</Text>
+                            <Text style={styles.statLabel}>Teas Sold</Text>
                         </View>
                         <View style={styles.statDivider} />
                         <View style={styles.statItem}>
-                            <Text style={styles.statValue}>₹{employee?.todayEarnings || 850}</Text>
+                            <Text style={styles.statValue}>₹{todayStats.earnings}</Text>
                             <Text style={styles.statLabel}>Earned</Text>
                         </View>
                         <View style={styles.statDivider} />
                         <View style={styles.statItem}>
-                            <Text style={styles.statValue}>6.5h</Text>
-                            <Text style={styles.statLabel}>Hours</Text>
+                            <Text style={styles.statValue}>{todayStats.duration}</Text>
+                            <Text style={styles.statLabel}>Duration</Text>
                         </View>
                     </View>
 
@@ -242,23 +273,7 @@ const ProfileScreen = ({ navigation }) => {
                         )}
                     </Animatable.View>
 
-                    {/* Refill Request Section */}
-                    <Animatable.View animation="fadeInUp" delay={100} style={styles.refillCard}>
-                        <View style={styles.refillInfo}>
-                            <View style={styles.refillIconContainer}>
-                                <Icon name="water-outline" size={24} color={COLORS.white} />
-                            </View>
-                            <View>
-                                <Text style={styles.refillTitle}>Drum Refill</Text>
-                                <Text style={styles.refillSubtitle}>Request tea stock refill</Text>
-                            </View>
-                        </View>
-                        <TouchableOpacity
-                            style={styles.refillButton}
-                            onPress={handleRefillRequest}>
-                            <Text style={styles.refillButtonText}>Request Now</Text>
-                        </TouchableOpacity>
-                    </Animatable.View>
+
 
                     {/* Menu Items */}
                     <View style={styles.menuSection}>
@@ -269,8 +284,12 @@ const ProfileScreen = ({ navigation }) => {
                                     onPress={() => {
                                         if (item.id === 'documents') {
                                             setIsDocsVisible(true);
+                                        } else if (item.id === 'bank') {
+                                            navigation.navigate('BankDetails');
+                                        } else if (item.id === 'history') {
+                                            navigation.navigate('WorkHistory');
                                         } else {
-                                            Alert.alert('Info', `${item.title} coming soon`)
+                                            Alert.alert('Info', `${item.title} coming soon`);
                                         }
                                     }}>
                                     <View style={styles.menuIconContainer}>

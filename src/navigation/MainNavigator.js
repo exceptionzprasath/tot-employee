@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { View, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { COLORS, SIZES, SHADOWS } from '../utils/colors';
 
@@ -11,6 +12,8 @@ import OrdersScreen from '../screens/main/OrdersScreen';
 import EarningsScreen from '../screens/main/EarningsScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import OrderDetailScreen from '../screens/main/OrderDetailScreen';
+import BankDetailsScreen from '../screens/main/BankDetailsScreen';
+import WorkHistoryScreen from '../screens/main/WorkHistoryScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -31,13 +34,30 @@ const OrdersStack = () => (
     </Stack.Navigator>
 );
 
+// Profile Stack
+const ProfileStack = () => (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="ProfileMain" component={ProfileScreen} />
+        <Stack.Screen name="BankDetails" component={BankDetailsScreen} />
+        <Stack.Screen name="WorkHistory" component={WorkHistoryScreen} />
+    </Stack.Navigator>
+);
+
 // Main Tab Navigator
 const MainNavigator = () => {
+    const insets = useSafeAreaInsets();
+
+    const dynamicTabBarStyle = {
+        ...styles.tabBar,
+        height: Platform.OS === 'ios' ? (60 + insets.bottom) : (60 + Math.max(insets.bottom, 8)),
+        paddingBottom: Platform.OS === 'ios' ? insets.bottom : Math.max(insets.bottom, 8),
+    };
+
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
                 headerShown: false,
-                tabBarStyle: styles.tabBar,
+                tabBarStyle: dynamicTabBarStyle,
                 tabBarShowLabel: true,
                 tabBarLabelStyle: styles.tabLabel,
                 tabBarActiveTintColor: COLORS.primary,
@@ -87,7 +107,7 @@ const MainNavigator = () => {
             />
             <Tab.Screen
                 name="Profile"
-                component={ProfileScreen}
+                component={ProfileStack}
                 options={{ tabBarLabel: 'Profile' }}
             />
         </Tab.Navigator>
@@ -98,8 +118,6 @@ const styles = StyleSheet.create({
     tabBar: {
         backgroundColor: COLORS.secondary,
         borderTopWidth: 0,
-        height: Platform.OS === 'ios' ? 85 : 65,
-        paddingBottom: Platform.OS === 'ios' ? 25 : 8,
         paddingTop: 8,
         ...SHADOWS.medium,
     },

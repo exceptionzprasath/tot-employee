@@ -3,7 +3,7 @@ import { Alert, Platform, PermissionsAndroid } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Geolocation from 'react-native-geolocation-service';
 import messaging from '@react-native-firebase/messaging';
-import { checkSession } from '../services/authService';
+import { checkSession, updateWorkHistory } from '../services/authService';
 import { API_BASE_URL } from '../config/api';
 import {
     emitGoOnline,
@@ -138,7 +138,7 @@ export const AuthProvider = ({ children }) => {
     const [preparedCanId, setPreparedCanId] = useState(null);
     const [canHistory, setCanHistory] = useState([]);
 
-    const SHIFT_DURATION = 8 * 60 * 60 * 1000; // 8 hours in ms
+    const SHIFT_DURATION = employee?.employeeType === 'Part Time' ? 5 * 60 * 60 * 1000 : 8 * 60 * 60 * 1000; // 5 hours for Part Time, 8 hours for Full Time
 
     const login = (employeeData) => {
         setIsAuthenticated(true);
@@ -191,6 +191,9 @@ export const AuthProvider = ({ children }) => {
                     if (response.success && response.employee) {
                         setIsAuthenticated(true);
                         setEmployee(response.employee);
+                        if (response.employee.workHistory) {
+                            await AsyncStorage.setItem('work_history', JSON.stringify(response.employee.workHistory));
+                        }
 
                         // Load Box Number if locked for today
                         const todayStr = new Date().toISOString().split('T')[0];
@@ -299,7 +302,65 @@ export const AuthProvider = ({ children }) => {
         };
     }, [employee, canHistory]);
 
-    const updateStatus = async (status, box = '', can = '') => {
+    const recordShiftSession = async (action) => {
+        try {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const nowTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            const localHistStr = await AsyncStorage.getItem('work_history') || '{}';
+            const workHistory = JSON.parse(localHistStr);
+            
+            let todayLog = workHistory[todayStr] || {
+                duration: '0h 0m',
+                onduty: nowTimeStr,
+                offline: '—',
+                sales: 0,
+                startMs: Date.now()
+            };
+
+            if (action === 'online') {
+                if (!workHistory[todayStr]) {
+                    todayLog.onduty = nowTimeStr;
+                    todayLog.startMs = Date.now();
+                }
+            } else if (action === 'offline') {
+                todayLog.offline = nowTimeStr;
+                todayLog.sales = totalTeasSold;
+                
+                const startMs = todayLog.startMs || shiftStartTime || Date.now();
+                const diffMs = Date.now() - startMs;
+                const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+                const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                todayLog.duration = `${diffHrs}h ${diffMins}m`;
+            }
+
+            workHistory[todayStr] = todayLog;
+            await AsyncStorage.setItem('work_history', JSON.stringify(workHistory));
+            
+            const phone = employee?.phone || employee?.mobile;
+            if (phone) {
+                await updateWorkHistory(phone, workHistory);
+            }
+        } catch (err) {
+            console.log('Error recording shift session:', err);
+        }
+    };
+
+    const executeOffline = async () => {
+        await recordShiftSession('offline');
+
+        emitGoOffline();
+        stopShiftNotification();
+        setIsOnline(false);
+        setShiftStartTime(null);
+        setCurrentLocation(null);
+
+        await AsyncStorage.setItem('is_online', 'false');
+        await AsyncStorage.removeItem('shift_start_time');
+        return true;
+    };
+
+    const updateStatus = async (status, box = '', can = '', forceOffline = false) => {
         const online = status === 'online';
 
         if (online) {
@@ -358,6 +419,8 @@ export const AuthProvider = ({ children }) => {
                 await AsyncStorage.setItem('can_req_status', 'none');
                 await AsyncStorage.removeItem('prepared_can_id');
 
+                await recordShiftSession('online');
+
                 emitGoOnline(employee, location, fcmToken, {
                     boxNumber: finalBox,
                     currentCan: finalCan,
@@ -388,15 +451,31 @@ export const AuthProvider = ({ children }) => {
                 return false;
             }
         } else {
-            emitGoOffline();
-            stopShiftNotification();
-            setIsOnline(false);
-            setShiftStartTime(null);
-            setCurrentLocation(null);
+            if (teaCups > 0 && !forceOffline) {
+                return new Promise((resolve) => {
+                    Alert.alert(
+                        'Remaining Tea',
+                        `You still have ${teaCups} cups of tea remaining in your can. You must complete your remaining tea before going offline.`,
+                        [
+                            { 
+                                text: 'Cancel', 
+                                style: 'cancel',
+                                onPress: () => resolve(false) 
+                            },
+                            {
+                                text: 'Emergency Offline',
+                                style: 'destructive',
+                                onPress: async () => {
+                                    const success = await executeOffline();
+                                    resolve(success);
+                                }
+                            }
+                        ]
+                    );
+                });
+            }
 
-            await AsyncStorage.setItem('is_online', 'false');
-            await AsyncStorage.removeItem('shift_start_time');
-            return true;
+            return await executeOffline();
         }
     };
 
@@ -424,6 +503,19 @@ export const AuthProvider = ({ children }) => {
             shiftStartTime,
             SHIFT_DURATION
         );
+
+        // If rider has completed selling all 3 cans, automatically terminate shift early!
+        if (canIndex >= 3 && newTeaCups === 0) {
+            setTimeout(async () => {
+                const success = await updateStatus('offline', '', '', true); // Force offline!
+                if (success) {
+                    Alert.alert(
+                        'Shift Completed early!',
+                        'Congratulations! You have completed selling all 3 cans of tea for today. Your shift has been ended automatically. Great work! ☕'
+                    );
+                }
+            }, 500);
+        }
     };
 
     const requestNextCanFromOffice = async (eta) => {
@@ -509,19 +601,39 @@ export const AuthProvider = ({ children }) => {
         setTeaCups(120);
     };
 
+    const updateEmployeeBankDetails = (bankDetails) => {
+        setEmployee(prev => {
+            if (!prev) return null;
+            return { ...prev, bankDetails };
+        });
+    };
+
+    const getShiftEndTimeToday = () => {
+        const end = new Date();
+        if (employee?.employeeType === 'Part Time') {
+            end.setHours(20, 0, 0, 0); // 8:00 PM today
+        } else {
+            end.setHours(15, 0, 0, 0); // 3:00 PM today
+        }
+        return end.getTime();
+    };
+
     useEffect(() => {
         let interval;
         if (isOnline && shiftStartTime) {
             interval = setInterval(() => {
-                const elapsed = Date.now() - shiftStartTime;
-                if (elapsed >= SHIFT_DURATION) {
-                    updateStatus('offline');
-                    Alert.alert('Shift Completed', 'Your 8-hour shift has been completed for today.');
+                const endTime = getShiftEndTimeToday();
+                if (Date.now() >= endTime) {
+                    updateStatus('offline', '', '', true); // Force offline!
+                    Alert.alert(
+                        'Shift Completed',
+                        `Your ${employee?.employeeType === 'Part Time' ? '5-hour part-time' : '8-hour full-time'} shift has been completed for today.`
+                    );
                 }
             }, 5000);
         }
         return () => clearInterval(interval);
-    }, [isOnline, shiftStartTime]);
+    }, [isOnline, shiftStartTime, employee]);
 
     return (
         <AuthContext.Provider value={{
@@ -548,6 +660,7 @@ export const AuthProvider = ({ children }) => {
             swapCanAtOffice,
             shiftStartTime,
             SHIFT_DURATION,
+            updateEmployeeBankDetails,
         }}>
             {children}
         </AuthContext.Provider>
