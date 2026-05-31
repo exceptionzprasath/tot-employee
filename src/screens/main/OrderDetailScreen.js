@@ -136,8 +136,14 @@ const OrderDetailScreen = ({ route, navigation }) => {
                     });
                     updateInventory(teaCount, snackCount);
 
-                    // Show payment modal or finish immediately if pre-paid online
-                    if (order.paymentMode === 'online') {
+                    // Show payment modal or finish immediately if pre-paid online or free tea promo
+                    if (order.firstTeaFree) {
+                        setTimeout(() => {
+                            Alert.alert('Delivery Successful', 'Order marked as delivered successfully. This was a free promotional first-time order with ₹0 payment due.', [
+                                { text: 'OK', onPress: () => navigation.goBack() }
+                            ]);
+                        }, 800);
+                    } else if (order.paymentMode === 'online') {
                         setTimeout(() => {
                             Alert.alert('Delivery Successful', 'Order marked as delivered successfully. Payment was pre-paid online.', [
                                 { text: 'OK', onPress: () => navigation.goBack() }
@@ -282,15 +288,20 @@ const OrderDetailScreen = ({ route, navigation }) => {
                 <Animatable.View animation="fadeInUp" delay={100} style={styles.card}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                         <Text style={styles.cardTitle}>Order Info</Text>
-                        {order.paymentMode === 'online' ? (
+                        {order.firstTeaFree ? (
+                            <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#2E7D3230' }}>
+                                <Icon name="gift" size={14} color="#2E7D32" />
+                                <Text style={{ color: '#2E7D32', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>FREE TEA ORDER</Text>
+                            </View>
+                        ) : order.paymentMode === 'online' ? (
                             <View style={{ backgroundColor: '#4CAF5020', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                 <Icon name="checkmark-circle" size={14} color="#4CAF50" />
                                 <Text style={{ color: '#4CAF50', fontSize: 11, fontWeight: '700' }}>Received from App</Text>
                             </View>
                         ) : (
-                            <View style={{ backgroundColor: '#FF980020', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                <Icon name="wallet" size={14} color="#FF9800" />
-                                <Text style={{ color: '#FF9800', fontSize: 11, fontWeight: '700' }}>Collect COD (Cash/QR)</Text>
+                            <View style={{ backgroundColor: '#FF3D0015', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#FF3D0030' }}>
+                                <Icon name="cash-outline" size={14} color="#FF3D00" />
+                                <Text style={{ color: '#FF3D00', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>COD (Collect Cash/QR)</Text>
                             </View>
                         )}
                     </View>
@@ -380,9 +391,17 @@ const OrderDetailScreen = ({ route, navigation }) => {
                     <View style={styles.totalRow}>
                         <Text style={styles.totalLabel}>Total</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            {order.paymentMode === 'online' && (
+                            {order.firstTeaFree ? (
+                                <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#2E7D3230' }}>
+                                    <Text style={{ color: '#2E7D32', fontSize: 12, fontWeight: '900' }}>FREE TEA PROMO</Text>
+                                </View>
+                            ) : order.paymentMode === 'online' ? (
                                 <View style={{ backgroundColor: '#4CAF5020', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
                                     <Text style={{ color: '#4CAF50', fontSize: 12, fontWeight: '700' }}>Received from App</Text>
+                                </View>
+                            ) : (
+                                <View style={{ backgroundColor: '#FF3D0015', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#FF3D0030' }}>
+                                    <Text style={{ color: '#FF3D00', fontSize: 12, fontWeight: '900' }}>COD (Pay on Delivery)</Text>
                                 </View>
                             )}
                             <Text style={styles.totalAmount}>₹{order.totalAmount}</Text>

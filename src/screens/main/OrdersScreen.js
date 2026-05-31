@@ -136,9 +136,18 @@ const OrdersScreen = ({ navigation }) => {
                     <View style={styles.infoRow}>
                         <Icon name="cart-outline" size={14} color={COLORS.mediumGray} />
                         <Text style={styles.infoText}>{item.items?.length} items</Text>
-                        {item.paymentMode === 'online' && (
+                        {item.firstTeaFree ? (
+                            <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 8, borderWidth: 1, borderColor: '#2E7D3230', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <Icon name="gift-outline" size={12} color="#2E7D32" />
+                                <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>FREE TEA</Text>
+                            </View>
+                        ) : item.paymentMode === 'online' ? (
                             <View style={{ backgroundColor: '#4CAF5020', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 }}>
                                 <Text style={{ color: '#4CAF50', fontSize: 10, fontWeight: '700' }}>Received from App</Text>
+                            </View>
+                        ) : (
+                            <View style={{ backgroundColor: '#FF3D0015', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 8, borderWidth: 1, borderColor: '#FF3D0030' }}>
+                                <Text style={{ color: '#FF3D00', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>COD</Text>
                             </View>
                         )}
                         <Text style={styles.amountText}>₹{item.totalAmount}</Text>
@@ -173,9 +182,18 @@ const OrdersScreen = ({ navigation }) => {
                     <View>
                         <Text style={styles.historyId}>#{item.id}</Text>
                         <Text style={styles.historyCustomer}>{item.customerName}</Text>
-                        {item.paymentMode === 'online' && (
+                        {item.firstTeaFree ? (
+                            <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4, marginBottom: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#2E7D3230', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <Icon name="gift-outline" size={12} color="#2E7D32" />
+                                <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>FREE TEA</Text>
+                            </View>
+                        ) : item.paymentMode === 'online' ? (
                             <View style={{ backgroundColor: '#4CAF5020', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4, marginBottom: 4, alignSelf: 'flex-start' }}>
                                 <Text style={{ color: '#4CAF50', fontSize: 10, fontWeight: '700' }}>Received from App</Text>
+                            </View>
+                        ) : (
+                            <View style={{ backgroundColor: '#FF3D0015', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4, marginBottom: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#FF3D0030' }}>
+                                <Text style={{ color: '#FF3D00', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>COD</Text>
                             </View>
                         )}
                         <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
