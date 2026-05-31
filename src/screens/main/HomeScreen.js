@@ -46,7 +46,8 @@ const HomeScreen = ({ navigation }) => {
         swapCanAtOffice,
         updateInventory,
         shiftStartTime,
-        SHIFT_DURATION
+        SHIFT_DURATION,
+        syncCanStatus
     } = useAuth();
 
     const [timeLeft, setTimeLeft] = useState('');
@@ -211,12 +212,26 @@ const HomeScreen = ({ navigation }) => {
         }
     };
 
-    const handleReachedOffice = () => {
+    const handleReachedOffice = async () => {
         if (canRequestStatus === 'prepared') {
             setScannedCanCode('');
             setShowSwapModal(true);
+            return;
+        }
+
+        // Actively check and sync can status from server (in case they missed socket notification)
+        setLoading(true);
+        const data = await syncCanStatus();
+        setLoading(false);
+
+        if (data && data.canRequestStatus === 'prepared') {
+            setScannedCanCode('');
+            setShowSwapModal(true);
         } else {
-            Alert.alert('Please Wait', 'The office is still preparing your next Can. You will be notified once ready.');
+            Alert.alert(
+                'Please Wait',
+                'The office is still preparing your next Can. You will be notified once ready. You can also tap Reached Office again once they hand over your can.'
+            );
         }
     };
 

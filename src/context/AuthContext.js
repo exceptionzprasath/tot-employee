@@ -182,6 +182,34 @@ export const AuthProvider = ({ children }) => {
         await AsyncStorage.removeItem('shift_start_time');
     };
 
+    const syncCanStatus = async (phoneOverride = null) => {
+        try {
+            const phone = phoneOverride || employee?.phone || employee?.mobile;
+            if (!phone) return null;
+
+            const response = await fetch(`${API_BASE_URL}/api/employees/${phone}/can-status`);
+            const data = await response.json();
+            if (data.success) {
+                setCanRequestStatus(data.canRequestStatus);
+                setPreparedCanId(data.preparedCanId);
+                setCanHistory(data.canHistory || []);
+                
+                await AsyncStorage.setItem('can_req_status', data.canRequestStatus);
+                if (data.preparedCanId) {
+                    await AsyncStorage.setItem('prepared_can_id', data.preparedCanId);
+                } else {
+                    await AsyncStorage.removeItem('prepared_can_id');
+                }
+                await AsyncStorage.setItem('can_history', JSON.stringify(data.canHistory || []));
+                
+                return data;
+            }
+        } catch (err) {
+            console.log('Error syncing can status:', err);
+        }
+        return null;
+    };
+
     useEffect(() => {
         const loadSession = async () => {
             try {
@@ -223,6 +251,9 @@ export const AuthProvider = ({ children }) => {
                             setPreparedCanId(prepCan);
                             const histStr = await AsyncStorage.getItem('can_history') || '[]';
                             setCanHistory(JSON.parse(histStr));
+
+                            // Actively sync can status from server in case they reconnected/restarted
+                            syncCanStatus(response.employee.phone || response.employee.mobile);
 
                             const startMs = await AsyncStorage.getItem('shift_start_time');
                             if (startMs) {
@@ -661,6 +692,7 @@ export const AuthProvider = ({ children }) => {
             shiftStartTime,
             SHIFT_DURATION,
             updateEmployeeBankDetails,
+            syncCanStatus,
         }}>
             {children}
         </AuthContext.Provider>
