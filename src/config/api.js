@@ -27,7 +27,7 @@ export const API_ENDPOINTS = {
 };
 
 export const PAYMENT_CONFIG = {
-    UPI_ID: '9361016097@naviaxis',
+    UPI_ID: 'foodman@idfcbank',
     MERCHANT_NAME: 'Thambioru Tea',
 };
 
