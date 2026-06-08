@@ -3,7 +3,7 @@ import { Alert, Platform, PermissionsAndroid } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Geolocation from 'react-native-geolocation-service';
 import messaging from '@react-native-firebase/messaging';
-import { checkSession, updateWorkHistory } from '../services/authService';
+import { checkSession, updateWorkHistory, updateEmployeeType } from '../services/authService';
 import { API_BASE_URL } from '../config/api';
 import {
     emitGoOnline,
@@ -217,6 +217,18 @@ export const AuthProvider = ({ children }) => {
                 if (empId) {
                     const response = await checkSession(empId);
                     if (response.success && response.employee) {
+                        // Check if account status has changed to pending or rejected
+                        if (response.employee.status === 'pending_verification') {
+                            await logout();
+                            Alert.alert('Verification Pending', 'Your account is pending verification. Please wait for admin approval.');
+                            return;
+                        }
+                        if (response.employee.status === 'rejected') {
+                            await logout();
+                            Alert.alert('Registration Rejected', `Your registration was rejected. Reason: ${response.employee.rejectionReason || 'No reason specified'}`);
+                            return;
+                        }
+
                         setIsAuthenticated(true);
                         setEmployee(response.employee);
                         if (response.employee.workHistory) {
@@ -357,12 +369,26 @@ export const AuthProvider = ({ children }) => {
             } else if (action === 'offline') {
                 todayLog.offline = nowTimeStr;
                 todayLog.sales = totalTeasSold;
+                todayLog.canHistory = canHistory;
                 
                 const startMs = todayLog.startMs || shiftStartTime || Date.now();
                 const diffMs = Date.now() - startMs;
                 const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
                 const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
                 todayLog.duration = `${diffHrs}h ${diffMins}m`;
+                todayLog.durationMs = diffMs;
+
+                // Full-time early incentive check:
+                if (employee?.employeeType === 'Full Time') {
+                    const isWithin6Hours = diffMs <= 6 * 60 * 60 * 1000;
+                    if (totalTeasSold >= 360 && isWithin6Hours) {
+                        todayLog.incentiveEarned = true;
+                        todayLog.incentiveAmount = 250;
+                    } else {
+                        todayLog.incentiveEarned = false;
+                        todayLog.incentiveAmount = 0;
+                    }
+                }
             }
 
             workHistory[todayStr] = todayLog;
@@ -395,6 +421,19 @@ export const AuthProvider = ({ children }) => {
         const online = status === 'online';
 
         if (online) {
+            // Guard: Part-time riders can only go online strictly between 3:00 PM and 8:00 PM
+            if (employee?.employeeType === 'Part Time') {
+                const now = new Date();
+                const currentHour = now.getHours();
+                if (currentHour < 15 || currentHour >= 20) {
+                    Alert.alert(
+                        'Shift Blocked ⏳',
+                        'Part-time shifts are strictly between 3:00 PM and 8:00 PM. You cannot go online outside this time window.'
+                    );
+                    return false;
+                }
+            }
+
             const hasPermission = await requestLocationPermission();
             if (!hasPermission) {
                 Alert.alert('Permission Denied', 'Location permission is required to go online.');
@@ -535,15 +574,23 @@ export const AuthProvider = ({ children }) => {
             SHIFT_DURATION
         );
 
-        // If rider has completed selling all 3 cans, automatically terminate shift early!
-        if (canIndex >= 3 && newTeaCups === 0) {
+        // If rider has completed selling all 3 cans, automatically terminate shift early! (Full-Time only)
+        if (employee?.employeeType === 'Full Time' && canIndex >= 3 && newTeaCups === 0) {
             setTimeout(async () => {
+                const isWithin6Hours = shiftStartTime ? (Date.now() - shiftStartTime <= 6 * 60 * 60 * 1000) : false;
                 const success = await updateStatus('offline', '', '', true); // Force offline!
                 if (success) {
-                    Alert.alert(
-                        'Shift Completed early!',
-                        'Congratulations! You have completed selling all 3 cans of tea for today. Your shift has been ended automatically. Great work! ☕'
-                    );
+                    if (employee?.employeeType === 'Full Time' && isWithin6Hours) {
+                        Alert.alert(
+                            'Shift Completed early! 🎉',
+                            'Congratulations! You have completed selling all 3 cans of tea for today within 6 hours. You have earned a ₹250 speed incentive bonus! Your shift has been ended automatically. Great work! ☕'
+                        );
+                    } else {
+                        Alert.alert(
+                            'Shift Completed early!',
+                            'Congratulations! You have completed selling all 3 cans of tea for today. Your shift has been ended automatically. Great work! ☕'
+                        );
+                    }
                 }
             }, 500);
         }
@@ -639,6 +686,40 @@ export const AuthProvider = ({ children }) => {
         });
     };
 
+    const changeEmployeeType = async (newType) => {
+        if (isOnline) {
+            Alert.alert('Cannot Switch Shift', 'You must go offline before changing your shift type.');
+            return false;
+        }
+
+        const currentRegisteredType = employee?.registeredEmployeeType || employee?.employeeType || 'Full Time';
+        if (currentRegisteredType === 'Part Time' && newType === 'Full Time') {
+            Alert.alert('Not Eligible', 'Part-time employees are not eligible to switch to Full-time.');
+            return false;
+        }
+
+        try {
+            const phone = employee?.phone || employee?.mobile;
+            if (!phone) {
+                Alert.alert('Error', 'Employee profile phone number is missing.');
+                return false;
+            }
+
+            const response = await updateEmployeeType(phone, newType);
+            if (response.success && response.user) {
+                setEmployee(response.user);
+                return true;
+            } else {
+                Alert.alert('Error', response.message || 'Failed to change shift preference.');
+                return false;
+            }
+        } catch (err) {
+            console.error('changeEmployeeType Error:', err);
+            Alert.alert('Error', 'Failed to connect to the server. Please try again.');
+            return false;
+        }
+    };
+
     const getShiftEndTimeToday = () => {
         const end = new Date();
         if (employee?.employeeType === 'Part Time') {
@@ -657,8 +738,8 @@ export const AuthProvider = ({ children }) => {
                 if (Date.now() >= endTime) {
                     updateStatus('offline', '', '', true); // Force offline!
                     Alert.alert(
-                        'Shift Completed',
-                        `Your ${employee?.employeeType === 'Part Time' ? '5-hour part-time' : '8-hour full-time'} shift has been completed for today.`
+                        'Shift Completed! 🎉',
+                        `Congratulations! Your ${employee?.employeeType === 'Part Time' ? '5-hour part-time' : '8-hour full-time'} shift has been completed for today. Great work! ☕`
                     );
                 }
             }, 5000);
@@ -693,6 +774,7 @@ export const AuthProvider = ({ children }) => {
             SHIFT_DURATION,
             updateEmployeeBankDetails,
             syncCanStatus,
+            changeEmployeeType,
         }}>
             {children}
         </AuthContext.Provider>

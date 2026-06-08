@@ -9,6 +9,7 @@ import {
     Dimensions,
     TouchableOpacity,
     Image,
+    Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
@@ -49,7 +50,11 @@ const LoginScreen = ({ navigation }) => {
             if (response.success) {
                 login(response.employee);
             } else {
-                setError(response.message || 'Login failed');
+                if (response.message && (response.message.includes('pending') || response.message.includes('rejected'))) {
+                    Alert.alert('Registration Status', response.message);
+                } else {
+                    setError(response.message || 'Login failed');
+                }
             }
         } catch (err) {
             setError('Something went wrong. Please try again.');

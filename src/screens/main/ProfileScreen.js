@@ -20,7 +20,7 @@ import { useAuth } from '../../context/AuthContext';
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
 
 const ProfileScreen = ({ navigation }) => {
-    const { employee, isOnline, logout, updateStatus, refillDrum, totalTeasSold, shiftStartTime } = useAuth();
+    const { employee, isOnline, logout, updateStatus, refillDrum, totalTeasSold, shiftStartTime, changeEmployeeType } = useAuth();
     const [isDocsVisible, setIsDocsVisible] = React.useState(false);
 
     const completedShifts = employee?.workHistory ? Object.keys(employee.workHistory).length : 0;
@@ -87,6 +87,35 @@ const ProfileScreen = ({ navigation }) => {
     };
 
 
+
+    const handleShiftTypeToggle = async (newType) => {
+        if (employee?.employeeType === newType) return;
+        
+        if (isOnline) {
+            Alert.alert(
+                'Shift Active ⚠️',
+                'You cannot change your shift type while your shift is active. Please go offline first.'
+            );
+            return;
+        }
+
+        Alert.alert(
+            'Change Shift Type',
+            `Are you sure you want to switch your preference to ${newType}? This will immediately change your active dashboard targets and rules.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Switch',
+                    onPress: async () => {
+                        const success = await changeEmployeeType(newType);
+                        if (success) {
+                            Alert.alert('Shift Type Updated 🎉', `Your shift preference has been successfully updated to ${newType}.`);
+                        }
+                    }
+                }
+            ]
+        );
+    };
 
     const handleLogout = () => {
         Alert.alert(
@@ -209,6 +238,68 @@ const ProfileScreen = ({ navigation }) => {
                             thumbColor={isOnline ? COLORS.online : COLORS.mediumGray}
                         />
                     </View>
+
+                    {/* Shift Preference Selector */}
+                    {employee?.registeredEmployeeType === 'Part Time' ? (
+                        <View style={styles.shiftCard}>
+                            <View style={styles.statusLeft}>
+                                <View style={[styles.statusIcon, { backgroundColor: COLORS.primary + '15' }]}>
+                                    <Icon name="time-outline" size={20} color={COLORS.primary} />
+                                </View>
+                                <View>
+                                    <Text style={styles.statusTitle}>Shift Type</Text>
+                                    <Text style={[styles.statusText, { color: COLORS.textSecondary }]}>
+                                        Part-Time Shift (Fixed)
+                                    </Text>
+                                </View>
+                            </View>
+                            <View style={styles.badgeContainer}>
+                                <Text style={styles.badgeText}>Fixed</Text>
+                            </View>
+                        </View>
+                    ) : (
+                        <View style={styles.shiftCard}>
+                            <View style={styles.statusLeft}>
+                                <View style={[styles.statusIcon, { backgroundColor: COLORS.primary + '15' }]}>
+                                    <Icon name="time-outline" size={20} color={COLORS.primary} />
+                                </View>
+                                <View>
+                                    <Text style={styles.statusTitle}>Shift Preference</Text>
+                                    <Text style={[styles.statusText, { color: COLORS.textSecondary }]}>
+                                        {employee?.employeeType || 'Full Time'}
+                                    </Text>
+                                </View>
+                            </View>
+                            <View style={styles.toggleContainer}>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.toggleBtn,
+                                        employee?.employeeType !== 'Part Time' && styles.toggleBtnActive,
+                                        isOnline && { opacity: 0.6 }
+                                    ]}
+                                    onPress={() => handleShiftTypeToggle('Full Time')}
+                                >
+                                    <Text style={[
+                                        styles.toggleBtnText,
+                                        employee?.employeeType !== 'Part Time' && styles.toggleBtnTextActive
+                                    ]}>Full-Time</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.toggleBtn,
+                                        employee?.employeeType === 'Part Time' && styles.toggleBtnActive,
+                                        isOnline && { opacity: 0.6 }
+                                    ]}
+                                    onPress={() => handleShiftTypeToggle('Part Time')}
+                                >
+                                    <Text style={[
+                                        styles.toggleBtnText,
+                                        employee?.employeeType === 'Part Time' && styles.toggleBtnTextActive
+                                    ]}>Part-Time</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
 
                     {/* Quick Stats */}
                     <View style={styles.statsRow}>
@@ -505,6 +596,50 @@ const styles = StyleSheet.create({
     statusText: {
         fontSize: SIZES.small,
         marginTop: 2,
+    },
+    shiftCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: COLORS.white,
+        borderRadius: SIZES.radius,
+        padding: SIZES.padding,
+        marginBottom: SIZES.padding,
+        ...SHADOWS.small,
+    },
+    badgeContainer: {
+        backgroundColor: COLORS.mediumGray + '20',
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    badgeText: {
+        fontSize: SIZES.small,
+        fontWeight: '600',
+        color: COLORS.textSecondary,
+    },
+    toggleContainer: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.lightGray,
+        padding: 4,
+        borderRadius: 20,
+    },
+    toggleBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+    },
+    toggleBtnActive: {
+        backgroundColor: COLORS.primary,
+        ...SHADOWS.small,
+    },
+    toggleBtnText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.textSecondary,
+    },
+    toggleBtnTextActive: {
+        color: COLORS.white,
     },
     statsRow: {
         flexDirection: 'row',

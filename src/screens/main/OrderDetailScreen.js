@@ -301,7 +301,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
                         ) : (
                             <View style={{ backgroundColor: '#FF3D0015', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#FF3D0030' }}>
                                 <Icon name="cash-outline" size={14} color="#FF3D00" />
-                                <Text style={{ color: '#FF3D00', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>COD (Collect Cash/QR)</Text>
+                                <Text style={{ color: '#FF3D00', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>Cash/QR Collection</Text>
                             </View>
                         )}
                     </View>
@@ -401,7 +401,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
                                 </View>
                             ) : (
                                 <View style={{ backgroundColor: '#FF3D0015', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#FF3D0030' }}>
-                                    <Text style={{ color: '#FF3D00', fontSize: 12, fontWeight: '900' }}>COD (Pay on Delivery)</Text>
+                                    <Text style={{ color: '#FF3D00', fontSize: 12, fontWeight: '900' }}>Cash/QR Collection</Text>
                                 </View>
                             )}
                             <Text style={styles.totalAmount}>₹{order.totalAmount}</Text>

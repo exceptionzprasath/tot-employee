@@ -147,7 +147,7 @@ const OrdersScreen = ({ navigation }) => {
                             </View>
                         ) : (
                             <View style={{ backgroundColor: '#FF3D0015', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 8, borderWidth: 1, borderColor: '#FF3D0030' }}>
-                                <Text style={{ color: '#FF3D00', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>COD</Text>
+                                <Text style={{ color: '#FF3D00', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>Collect Cash/QR</Text>
                             </View>
                         )}
                         <Text style={styles.amountText}>₹{item.totalAmount}</Text>
@@ -193,7 +193,7 @@ const OrdersScreen = ({ navigation }) => {
                             </View>
                         ) : (
                             <View style={{ backgroundColor: '#FF3D0015', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4, marginBottom: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#FF3D0030' }}>
-                                <Text style={{ color: '#FF3D00', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>COD</Text>
+                                <Text style={{ color: '#FF3D00', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>Collect Cash/QR</Text>
                             </View>
                         )}
                         <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>

@@ -79,6 +79,16 @@ export const checkSession = async (empId) => {
     }
 };
 
+export const updateEmployeeType = async (phone, employeeType) => {
+    try {
+        const response = await api.patch('/auth/employee-type', { phone, employeeType });
+        return response.data;
+    } catch (error) {
+        console.error('Update Employee Type API Error:', error);
+        throw error;
+    }
+};
+
 export default {
     registerEmployee,
     checkPhoneExists,
@@ -86,5 +96,6 @@ export default {
     updateWorkHistory,
     loginEmployee,
     getEmployeeStats,
-    checkSession
+    checkSession,
+    updateEmployeeType
 };

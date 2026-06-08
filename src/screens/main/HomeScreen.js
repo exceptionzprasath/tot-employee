@@ -117,13 +117,13 @@ const HomeScreen = ({ navigation }) => {
         };
     }, []);
 
-    // ⏰ 60-Second Ticking Timer for Placed Orders
+    // ⏰ 5-Minute Ticking Timer for Placed Orders
     useEffect(() => {
         const orderTimer = setInterval(() => {
             const now = Date.now();
             const valid = orders.filter(o => {
                 const age = now - new Date(o.createdAt).getTime();
-                return age <= 60000 && (o.status === 'placed' || o.status === 'pending');
+                return age <= 300000 && (o.status === 'placed' || o.status === 'pending');
             });
             setFilteredOrders(valid);
         }, 1000);
@@ -321,7 +321,10 @@ const HomeScreen = ({ navigation }) => {
     };
 
     const renderOrderCard = ({ item }) => {
-        const remainingTime = Math.max(0, 60 - Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 1000));
+        const remainingTime = Math.max(0, 300 - Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 1000));
+        const mins = Math.floor(remainingTime / 60);
+        const secs = remainingTime % 60;
+        const formattedTime = mins > 0 ? `${mins}m ${secs}s left` : `${secs}s left`;
 
         return (
             <Animatable.View animation="slideInUp" duration={400} style={styles.orderCard}>
@@ -329,9 +332,9 @@ const HomeScreen = ({ navigation }) => {
                     <View style={styles.orderIdBadge}>
                         <Text style={styles.orderId}>#{item.id}</Text>
                     </View>
-                    <View style={[styles.timerBadge, { backgroundColor: remainingTime <= 15 ? COLORS.error + '20' : COLORS.online + '20' }]}>
-                        <Icon name="alarm-outline" size={14} color={remainingTime <= 15 ? COLORS.error : COLORS.online} />
-                        <Text style={[styles.timerText, { color: remainingTime <= 15 ? COLORS.error : COLORS.online }]}>{remainingTime}s left</Text>
+                    <View style={[styles.timerBadge, { backgroundColor: remainingTime <= 30 ? COLORS.error + '20' : COLORS.online + '20' }]}>
+                        <Icon name="alarm-outline" size={14} color={remainingTime <= 30 ? COLORS.error : COLORS.online} />
+                        <Text style={[styles.timerText, { color: remainingTime <= 30 ? COLORS.error : COLORS.online }]}>{formattedTime}</Text>
                     </View>
                 </View>
 
@@ -418,19 +421,36 @@ const HomeScreen = ({ navigation }) => {
                         {/* Progress Dial Widget */}
                         <View style={styles.progressSection}>
                             <View style={styles.progressCircle}>
-                                <Text style={styles.progressCircleSub}>TEA TARGET</Text>
-                                <Text style={styles.progressCircleValue}>{shiftTarget}</Text>
-                                <Text style={styles.progressCircleDesc}>({canIndex}/3 Cans)</Text>
-                                <View style={styles.progressSoldBadge}>
-                                    <Text style={styles.progressSoldText}>{totalTeasSoldInShift} Teas Sold</Text>
-                                </View>
+                                <Text style={styles.progressCircleSub}>
+                                    {employee?.employeeType === 'Part Time' ? 'TOTAL SALES' : 'TEA TARGET'}
+                                </Text>
+                                <Text style={styles.progressCircleValue}>
+                                    {employee?.employeeType === 'Part Time' ? totalTeasSoldInShift : shiftTarget}
+                                </Text>
+                                <Text style={styles.progressCircleDesc}>
+                                    {employee?.employeeType === 'Part Time' ? 'Cups Sold Today' : `(${canIndex}/3 Cans)`}
+                                </Text>
+                                {employee?.employeeType === 'Part Time' ? (
+                                    <View style={[styles.progressSoldBadge, { backgroundColor: COLORS.online + '15', borderColor: COLORS.online + '35' }]}>
+                                        <Text style={[styles.progressSoldText, { color: COLORS.online }]}>
+                                            Earned: ₹{(totalTeasSoldInShift * 2.50).toFixed(2)}
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <View style={styles.progressSoldBadge}>
+                                        <Text style={styles.progressSoldText}>{totalTeasSoldInShift} Teas Sold</Text>
+                                    </View>
+                                )}
                             </View>
-                            <View style={styles.circularProgressBarContainer}>
-                                <Text style={styles.progressPercentageText}>{salesPercentage}% Complete</Text>
-                                <View style={styles.linearProgressBar}>
-                                    <View style={[styles.linearProgressActive, { width: `${salesPercentage}%` }]} />
+                            
+                            {employee?.employeeType !== 'Part Time' && (
+                                <View style={styles.circularProgressBarContainer}>
+                                    <Text style={styles.progressPercentageText}>{salesPercentage}% Complete</Text>
+                                    <View style={styles.linearProgressBar}>
+                                        <View style={[styles.linearProgressActive, { width: `${salesPercentage}%` }]} />
+                                    </View>
                                 </View>
-                            </View>
+                            )}
                         </View>
 
                         {/* Dial Grid Stats */}
@@ -442,8 +462,12 @@ const HomeScreen = ({ navigation }) => {
                             </View>
                             <View style={styles.gridCard}>
                                 <Icon name="cafe-outline" size={18} color={COLORS.secondary} />
-                                <Text style={styles.gridValue}>{canIndex}/3</Text>
-                                <Text style={styles.gridLabel}>Cans Used</Text>
+                                <Text style={styles.gridValue}>
+                                    {employee?.employeeType === 'Part Time' ? canIndex : `${canIndex}/3`}
+                                </Text>
+                                <Text style={styles.gridLabel}>
+                                    {employee?.employeeType === 'Part Time' ? 'Cans Swapped' : 'Cans Used'}
+                                </Text>
                             </View>
                             {employee?.employeeType === 'Full Time' ? (
                                 <View style={styles.gridCard}>
@@ -563,7 +587,7 @@ const HomeScreen = ({ navigation }) => {
                                     <Icon name="cafe-outline" size={60} color={COLORS.mediumGray} />
                                     <Text style={styles.emptyTitle}>No Orders Available</Text>
                                     <Text style={styles.emptyText}>
-                                        {isOnline ? 'Riders nearby will see orders placed in last 60s' : 'Go online to receive nearby orders'}
+                                        {isOnline ? 'Riders nearby will see orders placed in last 5 mins' : 'Go online to receive nearby orders'}
                                     </Text>
                                     {!isOnline && (
                                         <TouchableOpacity

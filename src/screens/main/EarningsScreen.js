@@ -68,17 +68,22 @@ const EarningsScreen = ({ navigation }) => {
             }
         } else {
             // Full-time calculations (fixed salary, ₹250 bonus if 360 cups sold within 6 hours of shift start)
-            const todayTeas = totalTeasSold || 0;
+            const todayStr = new Date().toISOString().split('T')[0];
+            const todayLog = employee?.workHistory?.[todayStr];
+            const todayTeas = todayLog ? parseInt(todayLog.sales || 0, 10) : (totalTeasSold || 0);
+            
             let achievedIncentive = false;
             let timeElapsedMs = 0;
             
-            if (shiftStartTime) {
+            if (todayLog && todayLog.offline !== '—') {
+                achievedIncentive = todayLog.incentiveEarned === true || (todayLog.sales >= 360 && (todayLog.incentiveAmount || 0) > 0);
+                timeElapsedMs = todayLog.durationMs || 0;
+            } else if (shiftStartTime) {
                 timeElapsedMs = Date.now() - shiftStartTime;
-            }
-            
-            // Check if sold >= 360 teas and elapsed time <= 6 hours
-            if (todayTeas >= 360 && timeElapsedMs > 0 && timeElapsedMs <= 6 * 60 * 60 * 1000) {
-                achievedIncentive = true;
+                // Check if sold >= 360 teas and elapsed time <= 6 hours
+                if (todayTeas >= 360 && timeElapsedMs > 0 && timeElapsedMs <= 6 * 60 * 60 * 1000) {
+                    achievedIncentive = true;
+                }
             }
 
             const todayEarnings = achievedIncentive ? 250 : 0;
@@ -172,10 +177,6 @@ const EarningsScreen = ({ navigation }) => {
                     <Text style={styles.headerTitle}>Earnings</Text>
                     <Text style={styles.headerSubtitle}>Track your income</Text>
                 </View>
-                <TouchableOpacity style={styles.withdrawButton}>
-                    <Icon name="wallet-outline" size={18} color={COLORS.white} />
-                    <Text style={styles.withdrawText}>Withdraw</Text>
-                </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -341,20 +342,6 @@ const styles = StyleSheet.create({
         fontSize: SIZES.small,
         color: 'rgba(255,255,255,0.7)',
         marginTop: 2,
-    },
-    withdrawButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.accent,
-        paddingVertical: SIZES.paddingS,
-        paddingHorizontal: SIZES.padding,
-        borderRadius: SIZES.radius,
-        gap: 6,
-    },
-    withdrawText: {
-        fontSize: SIZES.medium,
-        fontWeight: '600',
-        color: COLORS.white,
     },
     periodSelector: {
         flexDirection: 'row',
