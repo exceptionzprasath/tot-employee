@@ -13,12 +13,15 @@ import {
     Modal,
     TextInput,
     Dimensions,
-    Image
+    Image,
+    PanResponder,
+    Animated
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import { COLORS, SIZES, SHADOWS } from '../../utils/colors';
 import { useAuth } from '../../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { acceptOrder, recordOfflineSale } from '../../services/orderService';
 import { listenToPlacedOrders } from '../../config/firestore';
 import { getSocket, initSocket } from '../../config/socket';
@@ -26,6 +29,64 @@ import { PAYMENT_CONFIG } from '../../config/api';
 
 const { width } = Dimensions.get('window');
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 0;
+
+const SlideToAccept = ({ onAccept, width }) => {
+    const pan = React.useRef(new Animated.ValueXY()).current;
+    const maxSlide = width - 52; // 52 is thumb width (48) + margins/borders
+
+    const panResponder = React.useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: () => true,
+            onPanResponderGrant: () => {},
+            onPanResponderMove: (e, gestureState) => {
+                let newX = gestureState.dx;
+                if (newX < 0) newX = 0;
+                if (newX > maxSlide) newX = maxSlide;
+                pan.x.setValue(newX);
+            },
+            onPanResponderRelease: (e, gestureState) => {
+                if (gestureState.dx >= maxSlide * 0.8) {
+                    // Accept Order
+                    Animated.timing(pan.x, {
+                        toValue: maxSlide,
+                        duration: 100,
+                        useNativeDriver: false,
+                    }).start(() => {
+                        onAccept();
+                        // Reset slider on completion
+                        setTimeout(() => {
+                            pan.x.setValue(0);
+                        }, 1000);
+                    });
+                } else {
+                    // Release / spring back
+                    Animated.spring(pan.x, {
+                        toValue: 0,
+                        useNativeDriver: false,
+                    }).start();
+                }
+            },
+        })
+    ).current;
+
+    return (
+        <View style={[styles.slideContainer, { width }]}>
+            <Text style={styles.slideText}>Swipe to Accept Order ➔</Text>
+            <Animated.View
+                style={[
+                    styles.slideThumb,
+                    {
+                        transform: [{ translateX: pan.x }]
+                    }
+                ]}
+                {...panResponder.panHandlers}
+            >
+                <Icon name="chevron-forward-outline" size={24} color={COLORS.white} />
+            </Animated.View>
+        </View>
+    );
+};
 
 const HomeScreen = ({ navigation }) => {
     const {
@@ -169,8 +230,51 @@ const HomeScreen = ({ navigation }) => {
         }
     }, [teaCups, isOnline, canRequestStatus]);
 
-    const handleToggleOnline = (value) => {
+    const handleToggleOnline = async (value) => {
         if (value) {
+            try {
+                const savedSessionStr = await AsyncStorage.getItem('saved_shift_session');
+                if (savedSessionStr) {
+                    const saved = JSON.parse(savedSessionStr);
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    if (saved.date === todayStr) {
+                        Alert.alert(
+                            'Resume Session?',
+                            `A shift session from today was found (Can: ${saved.currentCan}, ${saved.teaCups} cups left). Would you like to continue this session or start a new can?`,
+                            [
+                                {
+                                    text: 'Cancel',
+                                    style: 'cancel'
+                                },
+                                {
+                                    text: 'Continue Session',
+                                    onPress: async () => {
+                                        setLoading(true);
+                                        const success = await updateStatus('online', '', '', false, saved);
+                                        setLoading(false);
+                                        if (success) {
+                                            Alert.alert('Online', 'Shift session continued successfully! ☕');
+                                        }
+                                    }
+                                },
+                                {
+                                    text: 'New Can',
+                                    onPress: async () => {
+                                        await AsyncStorage.removeItem('saved_shift_session');
+                                        setInputBox(boxNumber);
+                                        setInputCan('');
+                                        setShowOnlineModal(true);
+                                    }
+                                }
+                            ]
+                        );
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.error('Error checking saved session:', err);
+            }
+
             // Show prompt to set Box and Can number
             setInputBox(boxNumber); // Box stays same per day
             setInputCan('');
@@ -329,8 +433,24 @@ const HomeScreen = ({ navigation }) => {
         return (
             <Animatable.View animation="slideInUp" duration={400} style={styles.orderCard}>
                 <View style={styles.orderHeader}>
-                    <View style={styles.orderIdBadge}>
-                        <Text style={styles.orderId}>#{item.id}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={styles.orderIdBadge}>
+                            <Text style={styles.orderId}>#{item.id}</Text>
+                        </View>
+                        {item.firstTeaFree ? (
+                            <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#2E7D3230', flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                                <Icon name="gift-outline" size={10} color="#2E7D32" />
+                                <Text style={{ color: '#2E7D32', fontSize: 9, fontWeight: '900' }}>FREE</Text>
+                            </View>
+                        ) : item.paymentMode === 'online' ? (
+                            <View style={{ backgroundColor: '#4CAF5020', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Text style={{ color: '#4CAF50', fontSize: 9, fontWeight: '700' }}>PAID</Text>
+                            </View>
+                        ) : (
+                            <View style={{ backgroundColor: '#FF3D0015', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#FF3D0030' }}>
+                                <Text style={{ color: '#FF3D00', fontSize: 9, fontWeight: '900' }}>COD</Text>
+                            </View>
+                        )}
                     </View>
                     <View style={[styles.timerBadge, { backgroundColor: remainingTime <= 30 ? COLORS.error + '20' : COLORS.online + '20' }]}>
                         <Icon name="alarm-outline" size={14} color={remainingTime <= 30 ? COLORS.error : COLORS.online} />
@@ -338,15 +458,17 @@ const HomeScreen = ({ navigation }) => {
                     </View>
                 </View>
 
-                <View style={styles.customerInfo}>
-                    <Icon name="person-outline" size={16} color={COLORS.mediumGray} />
-                    <Text style={styles.customerName}>{item.customerName || 'Customer'}</Text>
-                </View>
-
                 <View style={styles.orderDetails}>
                     <View style={styles.detailRow}>
+                        <Icon name="person-outline" size={14} color={COLORS.mediumGray} />
+                        <Text style={styles.detailText} numberOfLines={1}>
+                            <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{item.customerName || 'Customer'}</Text>
+                            {item.customerPhone ? ` • ${item.customerPhone}` : ''}
+                        </Text>
+                    </View>
+                    <View style={styles.detailRow}>
                         <Icon name="map-outline" size={14} color={COLORS.mediumGray} />
-                        <Text style={styles.detailText} numberOfLines={1}>{item.customerLocation?.address || 'Erode'}</Text>
+                        <Text style={styles.detailText} numberOfLines={2}>{item.customerLocation?.address || 'Erode'}</Text>
                     </View>
                     <View style={styles.detailRow}>
                         <Icon name="cafe-outline" size={14} color={COLORS.mediumGray} />
@@ -354,21 +476,24 @@ const HomeScreen = ({ navigation }) => {
                             Items: {item.items?.map(it => `${it.quantity}x ${it.name}`).join(', ')}
                         </Text>
                     </View>
+                    <View style={styles.detailRow}>
+                        <Icon name="navigate-outline" size={14} color={COLORS.accent} />
+                        <Text style={styles.detailText}>
+                            {item.distance || '0.5'} km away ({Math.max(1, Math.round((parseFloat(item.distance) || 0.5) * 4))} mins estimated time)
+                        </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                        <Icon name="cash-outline" size={14} color={COLORS.primary} />
+                        <Text style={[styles.detailText, { fontWeight: '700', color: COLORS.primary }]}>
+                            {item.firstTeaFree ? 'Free Promo Order' : item.paymentMode === 'online' ? 'Paid Online' : 'Cash/QR Collection'} — Total: ₹{item.totalAmount}
+                        </Text>
+                    </View>
                 </View>
 
-                <View style={styles.orderFooter}>
-                    <View style={styles.distanceInfo}>
-                        <Icon name="navigate-outline" size={16} color={COLORS.accent} />
-                        <Text style={styles.distanceText}>{item.distance || '0.5'} km away</Text>
-                    </View>
-                    <TouchableOpacity
-                        style={styles.acceptButton}
-                        onPress={() => handleAcceptOrder(item.id)}
-                    >
-                        <Icon name="checkmark" size={18} color={COLORS.white} />
-                        <Text style={styles.acceptText}>Accept</Text>
-                    </TouchableOpacity>
-                </View>
+                <SlideToAccept 
+                    onAccept={() => handleAcceptOrder(item.id)} 
+                    width={width - 70} 
+                />
             </Animatable.View>
         );
     };
@@ -1458,6 +1583,35 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: 6,
         marginBottom: 12,
+    },
+    slideContainer: {
+        height: 52,
+        borderRadius: 26,
+        backgroundColor: '#E8F5E9',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+        borderWidth: 1.5,
+        borderColor: '#C8E6C9',
+        marginTop: 15,
+    },
+    slideText: {
+        color: '#2E7D32',
+        fontSize: SIZES.regular,
+        fontWeight: '800',
+        letterSpacing: 0.5,
+        textTransform: 'uppercase',
+    },
+    slideThumb: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#4CAF50',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'absolute',
+        left: 1,
     },
 });
 

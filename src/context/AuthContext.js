@@ -318,6 +318,7 @@ export const AuthProvider = ({ children }) => {
             }
         };
         loadSession();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Centralized Socket Can Prepared Listener
@@ -404,6 +405,23 @@ export const AuthProvider = ({ children }) => {
     };
 
     const executeOffline = async () => {
+        // Save current session before clearing
+        const todayStr = new Date().toISOString().split('T')[0];
+        const sessionToSave = {
+            date: todayStr,
+            boxNumber,
+            currentCan,
+            teaCups,
+            teasSold,
+            totalTeasSold,
+            canIndex,
+            canRequestStatus,
+            preparedCanId,
+            canHistory,
+            shiftStartTime,
+        };
+        await AsyncStorage.setItem('saved_shift_session', JSON.stringify(sessionToSave));
+
         await recordShiftSession('offline');
 
         emitGoOffline();
@@ -417,7 +435,7 @@ export const AuthProvider = ({ children }) => {
         return true;
     };
 
-    const updateStatus = async (status, box = '', can = '', forceOffline = false) => {
+    const updateStatus = async (status, box = '', can = '', forceOffline = false, resumeSessionData = null) => {
         const online = status === 'online';
 
         if (online) {
@@ -449,72 +467,132 @@ export const AuthProvider = ({ children }) => {
                 const fcmToken = await getFcmToken();
 
                 const todayStr = new Date().toISOString().split('T')[0];
-                const finalBox = boxNumber || box;
-                const finalCan = currentCan || can;
 
-                setBoxNumber(finalBox);
-                setCurrentCan(finalCan);
+                if (resumeSessionData) {
+                    // Resume previous session state
+                    const saved = resumeSessionData;
+                    setBoxNumber(saved.boxNumber);
+                    setCurrentCan(saved.currentCan);
+                    setTeaCups(saved.teaCups);
+                    setTeasSold(saved.teasSold);
+                    setTotalTeasSold(saved.totalTeasSold);
+                    setCanIndex(saved.canIndex);
+                    setCanRequestStatus(saved.canRequestStatus);
+                    setPreparedCanId(saved.preparedCanId);
+                    setCanHistory(saved.canHistory);
+                    setShiftStartTime(saved.shiftStartTime);
 
-                const initialHistory = [
-                    { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), event: 'Shift Started' },
-                    { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), event: `Box ${finalBox} Assigned` },
-                    { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), event: `Can ${finalCan} Assigned` }
-                ];
+                    await AsyncStorage.setItem('locked_box', saved.boxNumber);
+                    await AsyncStorage.setItem('locked_box_date', todayStr);
+                    await AsyncStorage.setItem('current_can', saved.currentCan);
+                    await AsyncStorage.setItem('tea_cups', String(saved.teaCups));
+                    await AsyncStorage.setItem('teas_sold', String(saved.teasSold));
+                    await AsyncStorage.setItem('total_teas_sold', String(saved.totalTeasSold));
+                    await AsyncStorage.setItem('can_index', String(saved.canIndex));
+                    await AsyncStorage.setItem('can_req_status', saved.canRequestStatus);
+                    if (saved.preparedCanId) {
+                        await AsyncStorage.setItem('prepared_can_id', saved.preparedCanId);
+                    } else {
+                        await AsyncStorage.removeItem('prepared_can_id');
+                    }
+                    await AsyncStorage.setItem('can_history', JSON.stringify(saved.canHistory));
+                    await AsyncStorage.setItem('is_online', 'true');
+                    await AsyncStorage.setItem('shift_start_time', String(saved.shiftStartTime));
 
-                const currentHistory = canHistory.length > 0 ? canHistory : initialHistory;
-                setCanHistory(currentHistory);
+                    emitGoOnline(employee, location, fcmToken, {
+                        boxNumber: saved.boxNumber,
+                        currentCan: saved.currentCan,
+                        teaCups: saved.teaCups,
+                        teasSold: saved.teasSold,
+                        totalTeasSold: saved.totalTeasSold,
+                        canIndex: saved.canIndex,
+                        canRequestStatus: saved.canRequestStatus,
+                        canHistory: saved.canHistory
+                    });
 
-                await AsyncStorage.setItem('locked_box', finalBox);
-                await AsyncStorage.setItem('locked_box_date', todayStr);
-                await AsyncStorage.setItem('current_can', finalCan);
-                await AsyncStorage.setItem('can_history', JSON.stringify(currentHistory));
-                await AsyncStorage.setItem('is_online', 'true');
-                
-                const startMs = Date.now();
-                setShiftStartTime(startMs);
-                await AsyncStorage.setItem('shift_start_time', String(startMs));
+                    startShiftNotification(
+                        saved.shiftStartTime,
+                        SHIFT_DURATION,
+                        saved.boxNumber,
+                        saved.currentCan,
+                        saved.teaCups,
+                        saved.teasSold,
+                        saved.totalTeasSold,
+                        saved.canIndex
+                    );
+                    startLocationUpdates();
+                    setIsOnline(true);
+                    return true;
+                } else {
+                    // Start new session
+                    const finalBox = boxNumber || box;
+                    const finalCan = currentCan || can;
 
-                // Reset daily states
-                setTeaCups(120);
-                setTeasSold(0);
-                setTotalTeasSold(0);
-                setCanIndex(1);
-                setCanRequestStatus('none');
-                setPreparedCanId(null);
+                    setBoxNumber(finalBox);
+                    setCurrentCan(finalCan);
 
-                await AsyncStorage.setItem('tea_cups', '120');
-                await AsyncStorage.setItem('teas_sold', '0');
-                await AsyncStorage.setItem('total_teas_sold', '0');
-                await AsyncStorage.setItem('can_index', '1');
-                await AsyncStorage.setItem('can_req_status', 'none');
-                await AsyncStorage.removeItem('prepared_can_id');
+                    const initialHistory = [
+                        { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), event: 'Shift Started' },
+                        { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), event: `Box ${finalBox} Assigned` },
+                        { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), event: `Can ${finalCan} Assigned` }
+                    ];
 
-                await recordShiftSession('online');
+                    const currentHistory = canHistory.length > 0 ? canHistory : initialHistory;
+                    setCanHistory(currentHistory);
 
-                emitGoOnline(employee, location, fcmToken, {
-                    boxNumber: finalBox,
-                    currentCan: finalCan,
-                    teaCups: 120,
-                    teasSold: 0,
-                    totalTeasSold: 0,
-                    canIndex: 1,
-                    canRequestStatus: 'none',
-                    canHistory: currentHistory
-                });
+                    await AsyncStorage.setItem('locked_box', finalBox);
+                    await AsyncStorage.setItem('locked_box_date', todayStr);
+                    await AsyncStorage.setItem('current_can', finalCan);
+                    await AsyncStorage.setItem('can_history', JSON.stringify(currentHistory));
+                    await AsyncStorage.setItem('is_online', 'true');
+                    
+                    const startMs = Date.now();
+                    setShiftStartTime(startMs);
+                    await AsyncStorage.setItem('shift_start_time', String(startMs));
 
-                startShiftNotification(
-                    startMs,
-                    SHIFT_DURATION,
-                    finalBox,
-                    finalCan,
-                    120,
-                    0,
-                    0,
-                    1
-                );
-                startLocationUpdates();
-                setIsOnline(true);
-                return true;
+                    // Reset daily states
+                    setTeaCups(120);
+                    setTeasSold(0);
+                    setTotalTeasSold(0);
+                    setCanIndex(1);
+                    setCanRequestStatus('none');
+                    setPreparedCanId(null);
+
+                    await AsyncStorage.setItem('tea_cups', '120');
+                    await AsyncStorage.setItem('teas_sold', '0');
+                    await AsyncStorage.setItem('total_teas_sold', '0');
+                    await AsyncStorage.setItem('can_index', '1');
+                    await AsyncStorage.setItem('can_req_status', 'none');
+                    await AsyncStorage.removeItem('prepared_can_id');
+                    await AsyncStorage.removeItem('saved_shift_session'); // Clear any saved session when starting new can
+
+                    await recordShiftSession('online');
+
+                    emitGoOnline(employee, location, fcmToken, {
+                        boxNumber: finalBox,
+                        currentCan: finalCan,
+                        teaCups: 120,
+                        teasSold: 0,
+                        totalTeasSold: 0,
+                        canIndex: 1,
+                        canRequestStatus: 'none',
+                        canHistory: currentHistory
+                    });
+
+                    startShiftNotification(
+                        startMs,
+                        SHIFT_DURATION,
+                        finalBox,
+                        finalCan,
+                        120,
+                        0,
+                        0,
+                        1
+                    );
+                    startLocationUpdates();
+                    setIsOnline(true);
+                    return true;
+                }
             } catch (error) {
                 console.error('Failed to go online:', error);
                 Alert.alert('Online Error', 'Failed to connect. Please try again.');
@@ -745,6 +823,7 @@ export const AuthProvider = ({ children }) => {
             }, 5000);
         }
         return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOnline, shiftStartTime, employee]);
 
     return (

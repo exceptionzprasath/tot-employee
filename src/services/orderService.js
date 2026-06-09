@@ -22,12 +22,7 @@ export const getActiveOrders = async () => {
 };
 
 export const getOrderHistory = async () => {
-    try {
-        // Mocking for now as we don't have a history endpoint for employees yet
-        return { success: true, data: [] };
-    } catch (error) {
-        return { success: false, data: [] };
-    }
+    return { success: true, data: [] };
 };
 
 export const getOrderById = async (orderId) => {
